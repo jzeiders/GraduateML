@@ -123,7 +123,7 @@ def model(data_dir, results_dir):
         results_df.to_csv(results_file, index=False)
 
 def evaluate():
-   # Set the RMSE performance targets
+    # Set the RMSE performance targets
     initial_target_rmse = 0.125
     subsequent_target_rmse = 0.135
 
@@ -131,10 +131,16 @@ def evaluate():
     all_results = []
 
     # Go through all the data folders in /data
-    for folder in os.listdir("data")[1:3]:
-        if os.path.isdir(os.path.join("data", folder)):
-            data_dir = os.path.join("data", folder)
+    data_folders = os.listdir("data")
+    # Ensure you're iterating over the desired range; adjust indices if needed
+    for folder in data_folders[1:3]:
+        folder_path = os.path.join("data", folder)
+        if os.path.isdir(folder_path):
+            data_dir = folder_path
             results_dir = os.path.join("results", folder)
+
+            # Ensure the results directory exists
+            os.makedirs(results_dir, exist_ok=True)
 
             # Run the model function
             model(data_dir, results_dir)
@@ -142,37 +148,60 @@ def evaluate():
             # Check if the rmse_results.csv file exists
             rmse_file = os.path.join(results_dir, "rmse_results.csv")
             if os.path.exists(rmse_file):
-                # Load RMSE results and evaluate performance
-                results_df = pd.read_csv(rmse_file)
+                try:
+                    # Load RMSE results and evaluate performance
+                    results_df = pd.read_csv(rmse_file)
 
-                # Determine if this is part of the initial or subsequent split
-                if len(all_results) < 5:
-                    target_rmse = initial_target_rmse
-                else:
-                    target_rmse = subsequent_target_rmse
+                    # Determine if this is part of the initial or subsequent split
+                    if len(all_results) < 5:
+                        target_rmse = initial_target_rmse
+                    else:
+                        target_rmse = subsequent_target_rmse
 
-                # Check if both models meet the target
-                lasso_rmse = results_df[results_df['Model'] == 'Lasso']['RMSE'].values[0]
-                rf_rmse = results_df[results_df['Model'] == 'Random Forest']['RMSE'].values[0]
+                    # Extract RMSE values for each model
+                    lasso_rmse = results_df.loc[results_df['Model'] == 'Lasso', 'RMSE'].values
+                    rf_rmse = results_df.loc[results_df['Model'] == 'Random Forest', 'RMSE'].values
 
-                meets_target = lasso_rmse < target_rmse and rf_rmse < target_rmse
-                all_results.append({
-                    'Folder': folder,
-                    'Lasso RMSE': lasso_rmse,
-                    'Random Forest RMSE': rf_rmse,
-                    'Meets Target': meets_target
-                })
+                    # Handle cases where RMSE values might be missing
+                    if len(lasso_rmse) == 0 or len(rf_rmse) == 0:
+                        print(f"Warning: Missing RMSE values in {rmse_file}")
+                        continue
+
+                    lasso_rmse = lasso_rmse[0]
+                    rf_rmse = rf_rmse[0]
+
+                    meets_target = lasso_rmse < target_rmse and rf_rmse < target_rmse
+                    all_results.append({
+                        'Folder': folder,
+                        'Lasso RMSE': lasso_rmse,
+                        'Random Forest RMSE': rf_rmse,
+                        'Meets Target': meets_target
+                    })
+                except Exception as e:
+                    print(f"Error processing {rmse_file}: {e}")
             else:
                 print(f"Warning: RMSE results file not found for folder {folder}")
+
+    if not all_results:
+        print("No results to evaluate.")
+        return
+
+    # Convert the list of results to a DataFrame
+    all_results_df = pd.DataFrame(all_results)
+
     # Save the summary to a CSV file
     summary_file = os.path.join("results", "evaluation_summary.csv")
-    all_results.to_csv(summary_file, index=False)
+    try:
+        all_results_df.to_csv(summary_file, index=False)
+        print(f"Summary saved to {summary_file}")
+    except Exception as e:
+        print(f"Error saving summary to {summary_file}: {e}")
 
     # Print a message if any folders failed to meet the target
-    if not all_results['Meets Target'].all():
+    if not all_results_df['Meets Target'].all():
         print("Warning: Some models did not meet the RMSE targets.")
     else:
-        print("All models met the RMSE targets.")    
+        print("All models met the RMSE targets.")
     
 
 if __name__ == "__main__":
