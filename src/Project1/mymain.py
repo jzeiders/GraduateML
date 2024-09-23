@@ -133,7 +133,7 @@ def evaluate():
     # Go through all the data folders in /data
     data_folders = os.listdir("data")
     # Ensure you're iterating over the desired range; adjust indices if needed
-    for folder in data_folders[1:3]:
+    for folder in data_folders:
         folder_path = os.path.join("data", folder)
         if os.path.isdir(folder_path):
             data_dir = folder_path
