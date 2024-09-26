@@ -20,3 +20,10 @@ Alpha - 0.00054
 
 Hyper Parameter Lasso
 Best parameters for Random Forest: {'model__n_estimators': 200, 'model__min_samples_split': 5, 'model__min_samples_leaf': 1, 'model__max_features': 'sqrt', 'model__max_depth': 20}
+
+
+Best parameters for ElasticNet: {'model__alpha': np.float64(0.00042813323987193956), 'model__l1_ratio': np.float64(1.0)}
+
+Best parameters for ElasticNet: {'model__alpha': np.float64(0.0006951927961775605), 'model__l1_ratio': np.float64(0.55)}
+
+Target encoding dit much worse.

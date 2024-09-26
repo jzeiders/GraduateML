@@ -3,10 +3,9 @@ import numpy as np
 import warnings
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import ElasticNet, Lasso
 from sklearn.ensemble import RandomForestRegressor
 from category_encoders import OneHotEncoder, TargetEncoder
-from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import os 
@@ -70,7 +69,7 @@ def model(data_dir, results_dir, encoding='onehot'):
     test_path = os.path.join(data_dir, 'test.csv')
 
     # Define columns to drop, most are due to many NA values
-    DROP_COLS = ['PID']
+    DROP_COLS = ['PID', 'Street', 'Utilities', 'Condition_2', 'Roof_Matl', 'Heating', 'Pool_QC', 'Misc_Feature', 'Low_Qual_Fin_SF', 'Pool_Area', 'Longitude','Latitude']
 
     # Load training data
     train = pd.read_csv(train_path).drop(columns=DROP_COLS)
@@ -108,6 +107,23 @@ def model(data_dir, results_dir, encoding='onehot'):
         categorical_features=categorical_cols,
         encoding='target'  # Target encoding often works better with tree-based models
     )
+
+    # Create the ElasticNet pipeline without specifying alpha and l1_ratio
+    elastic_pipeline = create_pipeline(
+        model=ElasticNet(max_iter=1000000, random_state=42, alpha=0.01),
+        numerical_features=numerical_cols,
+        categorical_features=categorical_cols,
+        encoding=encoding
+    )
+
+
+    start_time = time.perf_counter()
+    elastic_pipeline.fit(X, y)
+    elasticnet_time = time.perf_counter() - start_time
+    print(f"ElasticNet model trained in {elasticnet_time:.2f} seconds.")
+
+    # Get the best estimator for ElasticNet
+
 
     start_time = time.perf_counter()
     lasso_pipeline.fit(X, y)
@@ -160,16 +176,19 @@ def model(data_dir, results_dir, encoding='onehot'):
 
         preds_lasso_test = lasso_pipeline.predict(X_test)
         preds_rf_test = rf_pipeline.predict(X_test)
+        preds_elastic_test = elastic_pipeline.predict(X_test)
 
         rmse_lasso = np.sqrt(mean_squared_error(actual_prices, preds_lasso_test))
         rmse_rf = np.sqrt(mean_squared_error(actual_prices, preds_rf_test))
+        rmse_elastic = np.sqrt(mean_squared_error(actual_prices, preds_elastic_test))
 
         # Write thes results to a file using a pandas dataframe
         # Create a DataFrame to store the results
         results_df = pd.DataFrame({
-            'Model': ['Lasso', 'Random Forest'],
-            'RMSE': [round(rmse_lasso,5), round(rmse_rf,5)],
-            'Time': [lasso_time, rf_time]
+            'Model': ['Lasso', 'Random Forest', "ElasticNet"],
+            'RMSE': [round(rmse_lasso,5), round(rmse_rf,5), round(rmse_elastic,5)],
+            'Time': [lasso_time, rf_time, elasticnet_time]
+
         })
     
         # Write the results to a CSV file
@@ -229,6 +248,7 @@ def evaluate():
                         'Folder': folder,
                         'Lasso RMSE': lasso_rmse,
                         'Random Forest RMSE': rf_rmse,
+                        'Elastic Net RMSE': results_df.loc[results_df['Model'] == 'ElasticNet', 'RMSE'].values[0],
                         'Meets Target': meets_target
                     })
                 except Exception as e:
