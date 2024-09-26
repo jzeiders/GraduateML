@@ -6,6 +6,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
 from category_encoders import OneHotEncoder, TargetEncoder
+from sklearn.model_selection import KFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import os 
@@ -69,7 +70,7 @@ def model(data_dir, results_dir, encoding='onehot'):
     test_path = os.path.join(data_dir, 'test.csv')
 
     # Define columns to drop, most are due to many NA values
-    DROP_COLS = ['PID', 'Mas_Vnr_Type',"Garage_Yr_Blt","Misc_Feature"]
+    DROP_COLS = ['PID']
 
     # Load training data
     train = pd.read_csv(train_path).drop(columns=DROP_COLS)
@@ -112,6 +113,17 @@ def model(data_dir, results_dir, encoding='onehot'):
     lasso_pipeline.fit(X, y)
     lasso_time = time.perf_counter() - start_time
     print(f"Lasso model trained in {lasso_time:.2f} seconds.")
+
+
+    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+
+    start_time = time.perf_counter()
+    lasso_scores = cross_val_score(lasso_pipeline, X, y, cv=cv, scoring='neg_mean_squared_error')
+    lasso_cv_rmse_scores = np.sqrt(-lasso_scores)
+    lasso_time = time.perf_counter() - start_time
+    print(f"Lasso CV RMSE: {lasso_cv_rmse_scores.mean():.4f} (+/- {lasso_cv_rmse_scores.std() * 2:.4f})")
+    print(f"Lasso CV completed in {lasso_time:.2f} seconds.")
+
     
     start_time = time.perf_counter()
     rf_pipeline.fit(X, y)
@@ -166,7 +178,7 @@ def model(data_dir, results_dir, encoding='onehot'):
         results_df = pd.DataFrame({
             'Model': ['Lasso', 'Random Forest'],
             'RMSE': [round(rmse_lasso,5), round(rmse_rf,5)],
-            'Time': [lasso_time / 1_000_000, rf_time / 1_000_000]
+            'Time': [lasso_time, rf_time]
         })
     
         # Write the results to a CSV file
