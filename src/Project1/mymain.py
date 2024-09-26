@@ -6,7 +6,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
 from category_encoders import OneHotEncoder, TargetEncoder
-from sklearn.model_selection import KFold, cross_val_score
+from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import os 
@@ -82,23 +82,23 @@ def model(data_dir, results_dir, encoding='onehot'):
     # Identify numerical and categorical columns
     numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
-    
 
         # Create pipelines for different models
     # Lasso Pipeline (with onehot encoding)
     lasso_pipeline = create_pipeline(
-        model=Lasso(alpha=0.001, max_iter=1000000, random_state=42),
+        model=Lasso(alpha=0.00054, max_iter=1000000, random_state=42),
         numerical_features=numerical_cols,
         categorical_features=categorical_cols,
         encoding=encoding  # You can choose 'onehot' or 'target'
     )
+
     
     # Random Forest Pipeline (with target encoding)
     rf_pipeline = create_pipeline(
         model=RandomForestRegressor(
-            n_estimators=500, 
-            max_depth=None, 
-            min_samples_split=2, 
+            n_estimators=200, 
+            max_depth=20, 
+            min_samples_split=5, 
             min_samples_leaf=1, 
             max_features='sqrt',
             random_state=42,
@@ -114,15 +114,6 @@ def model(data_dir, results_dir, encoding='onehot'):
     lasso_time = time.perf_counter() - start_time
     print(f"Lasso model trained in {lasso_time:.2f} seconds.")
 
-
-    cv = KFold(n_splits=5, shuffle=True, random_state=42)
-
-    start_time = time.perf_counter()
-    lasso_scores = cross_val_score(lasso_pipeline, X, y, cv=cv, scoring='neg_mean_squared_error')
-    lasso_cv_rmse_scores = np.sqrt(-lasso_scores)
-    lasso_time = time.perf_counter() - start_time
-    print(f"Lasso CV RMSE: {lasso_cv_rmse_scores.mean():.4f} (+/- {lasso_cv_rmse_scores.std() * 2:.4f})")
-    print(f"Lasso CV completed in {lasso_time:.2f} seconds.")
 
     
     start_time = time.perf_counter()
