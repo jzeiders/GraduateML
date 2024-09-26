@@ -1,9 +1,12 @@
 import pandas as pd
 import numpy as np
 import warnings
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
-from category_encoders import OneHotEncoder
+from category_encoders import OneHotEncoder, TargetEncoder
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import os 
 import sys
@@ -14,49 +17,102 @@ import time
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
 
-def model(data_dir, results_dir):
+def create_pipeline(model, numerical_features, categorical_features, encoding='onehot'):
+    """
+    Creates a preprocessing and modeling pipeline.
+
+    Parameters:
+    - model: The machine learning model to integrate into the pipeline.
+    - numerical_features: List of numerical feature names.
+    - categorical_features: List of categorical feature names.
+    - encoding: Type of encoding for categorical variables ('onehot' or 'target').
+
+    Returns:
+    - A scikit-learn Pipeline object.
+    """
+    if encoding == 'onehot':
+        categorical_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
+            ('onehot', OneHotEncoder(use_cat_names=True, handle_unknown='ignore'))
+        ])
+    elif encoding == 'target':
+        categorical_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
+            ('target_enc', TargetEncoder())
+        ])
+    else:
+        raise ValueError("Unsupported encoding type. Choose 'onehot' or 'target'.")
+    
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+    
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numerical_features),
+            ('cat', categorical_transformer, categorical_features)
+        ],
+        )
+    
+    pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('model', model)
+    ])
+    
+    return pipeline
+
+def model(data_dir, results_dir, encoding='onehot'):
     # Construct paths for train.csv and test.csv based on the given directory
     train_path = os.path.join(data_dir, 'train.csv')
     test_path = os.path.join(data_dir, 'test.csv')
 
-    # Step 1: Preprocess the training data and fit the models
     # Load training data
-
     train = pd.read_csv(train_path).drop(columns=['PID'])
     
-    # Separate PID and response variable
-    y = np.log1p(train['Sale_Price'])  # Using log1p to handle possible zero values
-
+    # Separate response variable and features
+    y = np.log1p(train['Sale_Price'])  # Using log1p to handle possible zero or skewed values
     X = train.drop(['Sale_Price'], axis=1)
-
+    
     # Identify numerical and categorical columns
-    numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns
-    categorical_cols = X.select_dtypes(include=['object']).columns
+    numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+    
 
-    # Handle missing values
-    X_num = X[numerical_cols].fillna(X[numerical_cols].median())
-    X_cat = X[categorical_cols].fillna('Missing')
+        # Create pipelines for different models
+    # Lasso Pipeline (with onehot encoding)
+    lasso_pipeline = create_pipeline(
+        model=Lasso(alpha=0.001, max_iter=10000, random_state=42),
+        numerical_features=numerical_cols,
+        categorical_features=categorical_cols,
+        encoding=encoding  # You can choose 'onehot' or 'target'
+    )
+    
+    # Random Forest Pipeline (with target encoding)
+    rf_pipeline = create_pipeline(
+        model=RandomForestRegressor(
+            n_estimators=100, 
+            max_depth=None, 
+            min_samples_split=2, 
+            min_samples_leaf=1, 
+            max_features='sqrt',
+            random_state=42,
+            n_jobs=-1
+        ),
+        numerical_features=numerical_cols,
+        categorical_features=categorical_cols,
+        encoding='target'  # Target encoding often works better with tree-based models
+    )
 
-    # Encode categorical variables
-    encoder = OneHotEncoder(cols=categorical_cols, use_cat_names=True)
-    X_cat_encoded = encoder.fit_transform(X_cat)
-
-    # Combine numerical and encoded categorical features
-    X_processed = pd.concat([X_num, X_cat_encoded], axis=1)
-
-    # Optional: Feature Scaling for Lasso
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_processed)
-
-    # Fit Lasso Regression
-    lasso = Lasso(alpha=0.001, max_iter=10000, random_state=42)
-    lasso.fit(X_scaled, y)
-
-    # Fit Random Forest Regressor
-    start_time_rf = time.perf_counter_ns()
-    rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-    rf.fit(X_processed, y)
-    rf_time = time.perf_counter_ns() - start_time_rf
+    start_time = time.perf_counter()
+    lasso_pipeline.fit(X, y)
+    lasso_time = time.perf_counter() - start_time
+    print(f"Lasso model trained in {lasso_time:.2f} seconds.")
+    
+    start_time = time.perf_counter()
+    rf_pipeline.fit(X, y)
+    rf_time = time.perf_counter() - start_time
+    print(f"Random Forest model trained in {rf_time:.2f} seconds.")
 
     # Step 2: Preprocess test data and make predictions
     # Load test data
@@ -64,43 +120,33 @@ def model(data_dir, results_dir):
     test_pid = test['PID']
     X_test = test.drop(['PID'], axis=1)
 
-    # Handle missing values in test data
-    X_test_num = X_test[numerical_cols].fillna(X[numerical_cols].median())
-    X_test_cat = X_test[categorical_cols].fillna('Missing')
+      # Impute missing values in test data
+    for col in X_test.columns:
+        if X_test[col].dtype in ['int64', 'float64']:
+            X_test[col] = X_test[col].fillna(X_test[col].median())
+        else:
+            X_test[col] = X_test[col].fillna(X_test[col].mode().iloc[0])
 
-    # Encode categorical variables using the same encoder
-    X_test_cat_encoded = encoder.transform(X_test_cat)
-
-    # Combine numerical and encoded categorical features
-    X_test_processed = pd.concat([X_test_num, X_test_cat_encoded], axis=1)
-
-    # Align test data with training data
-    X_test_processed = X_test_processed.reindex(columns=X_processed.columns, fill_value=0)
-
-    # Optional: Feature Scaling for Lasso
-    X_test_scaled = scaler.transform(X_test_processed)
 
     # Make predictions
-    lasso_start_time = time.perf_counter_ns()
-    preds_lasso_test = lasso.predict(X_test_scaled)
-    preds_rf_test = rf.predict(X_test_processed)
-    lasso_time = time.perf_counter_ns() - lasso_start_time
+    preds_lasso = lasso_pipeline.predict(X_test[0:1,:])
+    preds_rf = rf_pipeline.predict(X_test)
 
     # Prepare submission files
     submission_lasso = pd.DataFrame({
         'PID': test_pid,
-        'Sale_Price': preds_lasso_test
+        'Sale_Price': np.expm1(preds_lasso)
     })
 
     submission_rf = pd.DataFrame({
         'PID': test_pid,
-        'Sale_Price': preds_rf_test
+        'Sale_Price': np.expm1(preds_rf)
     })
 
     
     # Make sure the directory exists
-    if not os.path.exists(results_dir):
-        os.makedirs(results_dir)
+    os.makedirs(results_dir, exist_ok=True)
+
     
     submission_1_path = os.path.join(results_dir, 'mysubmission1.txt')
     submission_2_path = os.path.join(results_dir, 'mysubmission2.txt')
@@ -112,6 +158,10 @@ def model(data_dir, results_dir):
     if is_test_dev:
         test_y = pd.read_csv(os.path.join(data_dir, 'test_y.csv'))
         actual_prices = np.log1p(test_y['Sale_Price']) 
+
+        preds_lasso_test = lasso_pipeline.predict(X_test)
+        preds_rf_test = rf_pipeline.predict(X_test)
+
         rmse_lasso = np.sqrt(mean_squared_error(actual_prices, preds_lasso_test))
         rmse_rf = np.sqrt(mean_squared_error(actual_prices, preds_rf_test))
 

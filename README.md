@@ -12,3 +12,7 @@ https://liangfgithub.github.io/Coding/F24_Coding1.html
 
 ## Assignment 2
 https://campuswire.com/c/GB46E5679/feed/43
+
+
+## Project 1
+https://liangfgithub.github.io/Proj/F24_Proj1.html
