@@ -33,7 +33,7 @@ def create_pipeline(model, numerical_features, categorical_features, encoding='o
     if encoding == 'onehot':
         categorical_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
-            ('onehot', OneHotEncoder(use_cat_names=True, handle_unknown='ignore'))
+            ('onehot', OneHotEncoder(use_cat_names=True))
         ])
     elif encoding == 'target':
         categorical_transformer = Pipeline(steps=[
@@ -54,6 +54,7 @@ def create_pipeline(model, numerical_features, categorical_features, encoding='o
             ('cat', categorical_transformer, categorical_features)
         ],
         )
+
     
     pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
@@ -67,8 +68,11 @@ def model(data_dir, results_dir, encoding='onehot'):
     train_path = os.path.join(data_dir, 'train.csv')
     test_path = os.path.join(data_dir, 'test.csv')
 
+    # Define columns to drop, most are due to many NA values
+    DROP_COLS = ['PID', 'Mas_Vnr_Type',"Garage_Yr_Blt","Misc_Feature"]
+
     # Load training data
-    train = pd.read_csv(train_path).drop(columns=['PID'])
+    train = pd.read_csv(train_path).drop(columns=DROP_COLS)
     
     # Separate response variable and features
     y = np.log1p(train['Sale_Price'])  # Using log1p to handle possible zero or skewed values
@@ -118,18 +122,10 @@ def model(data_dir, results_dir, encoding='onehot'):
     # Load test data
     test = pd.read_csv(test_path)
     test_pid = test['PID']
-    X_test = test.drop(['PID'], axis=1)
-
-      # Impute missing values in test data
-    for col in X_test.columns:
-        if X_test[col].dtype in ['int64', 'float64']:
-            X_test[col] = X_test[col].fillna(X_test[col].median())
-        else:
-            X_test[col] = X_test[col].fillna(X_test[col].mode().iloc[0])
-
+    X_test = test.drop(DROP_COLS, axis=1)
 
     # Make predictions
-    preds_lasso = lasso_pipeline.predict(X_test[0:1,:])
+    preds_lasso = lasso_pipeline.predict(X_test)
     preds_rf = rf_pipeline.predict(X_test)
 
     # Prepare submission files

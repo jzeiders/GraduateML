@@ -1,11 +1,11 @@
 Folder,Lasso RMSE,Random Forest RMSE,Meets Target
-fold2,0.14008,0.1404,False
-fold5,0.13213,0.12932,False
-fold4,0.1628,0.14016,False
-fold3,0.13904,0.13351,False
-fold8,0.13511,0.14489,False
-fold6,0.16785,0.15083,False
-fold1,0.16045,0.13988,False
-fold7,0.14554,0.15498,False
-fold9,0.16242,0.14989,False
-fold10,0.14135,0.13975,False
+fold2,0.13429,0.13061,False
+fold5,0.12422,0.12294,True
+fold4,0.15849,0.13563,False
+fold3,0.13243,0.12676,False
+fold8,0.14559,0.14334,False
+fold6,0.17507,0.14277,False
+fold1,0.16486,0.12873,False
+fold7,0.14897,0.14503,False
+fold9,0.16901,0.14874,False
+fold10,0.13889,0.13817,False
