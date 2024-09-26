@@ -17,7 +17,7 @@ import time
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
 
-def create_pipeline(model, numerical_features, categorical_features, encoding='onehot'):
+def create_pipeline(model, numerical_features, categorical_features, encoding):
     """
     Creates a preprocessing and modeling pipeline.
 
@@ -86,7 +86,7 @@ def model(data_dir, results_dir, encoding='onehot'):
         # Create pipelines for different models
     # Lasso Pipeline (with onehot encoding)
     lasso_pipeline = create_pipeline(
-        model=Lasso(alpha=0.001, max_iter=10000, random_state=42),
+        model=Lasso(alpha=0.001, max_iter=1000000, random_state=42),
         numerical_features=numerical_cols,
         categorical_features=categorical_cols,
         encoding=encoding  # You can choose 'onehot' or 'target'
