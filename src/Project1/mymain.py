@@ -120,7 +120,7 @@ def model(data_dir, results_dir):
         results_df = pd.DataFrame({
             'Model': ['Lasso', 'Random Forest'],
             'RMSE': [round(rmse_lasso,5), round(rmse_rf,5)],
-            'Time': [lasso_time / 1000_000, rf_time / 1000_000]
+            'Time': [lasso_time / 1_000_000, rf_time / 1_000_000]
         })
     
         # Write the results to a CSV file
