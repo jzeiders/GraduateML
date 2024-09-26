@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 import os 
 import sys
 from sklearn.metrics import mean_squared_error
+import time
 
 
 # Suppress warnings for cleaner output
@@ -52,8 +53,10 @@ def model(data_dir, results_dir):
     lasso.fit(X_scaled, y)
 
     # Fit Random Forest Regressor
+    start_time_rf = time.perf_counter_ns()
     rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
     rf.fit(X_processed, y)
+    rf_time = time.perf_counter_ns() - start_time_rf
 
     # Step 2: Preprocess test data and make predictions
     # Load test data
@@ -78,9 +81,10 @@ def model(data_dir, results_dir):
     X_test_scaled = scaler.transform(X_test_processed)
 
     # Make predictions
-    preds_lasso = lasso.predict(X_scaled)  # Not needed
+    lasso_start_time = time.perf_counter_ns()
     preds_lasso_test = lasso.predict(X_test_scaled)
     preds_rf_test = rf.predict(X_test_processed)
+    lasso_time = time.perf_counter_ns() - lasso_start_time
 
     # Prepare submission files
     submission_lasso = pd.DataFrame({
@@ -115,7 +119,8 @@ def model(data_dir, results_dir):
         # Create a DataFrame to store the results
         results_df = pd.DataFrame({
             'Model': ['Lasso', 'Random Forest'],
-            'RMSE': [rmse_lasso, rmse_rf]
+            'RMSE': [round(rmse_lasso,5), round(rmse_rf,5)],
+            'Time': [lasso_time / 1000_000, rf_time / 1000_000]
         })
     
         # Write the results to a CSV file
