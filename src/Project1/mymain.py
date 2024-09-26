@@ -95,7 +95,7 @@ def model(data_dir, results_dir, encoding='onehot'):
     # Random Forest Pipeline (with target encoding)
     rf_pipeline = create_pipeline(
         model=RandomForestRegressor(
-            n_estimators=100, 
+            n_estimators=500, 
             max_depth=None, 
             min_samples_split=2, 
             min_samples_leaf=1, 
