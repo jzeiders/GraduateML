@@ -1,11 +1,11 @@
-Folder,Lasso RMSE,Random Forest RMSE,Elastic Net RMSE,Meets Target
-fold2,0.12953,0.13047,0.16477,False
-fold5,0.12197,0.12168,0.14874,True
-fold4,0.1506,0.13298,0.18886,False
-fold3,0.12547,0.12678,0.15564,False
-fold8,0.14041,0.14,0.16839,False
-fold6,0.16924,0.14292,0.20178,False
-fold1,0.15687,0.12976,0.19165,False
-fold7,0.14589,0.14545,0.17774,False
-fold9,0.16273,0.14993,0.19811,False
-fold10,0.1368,0.13658,0.16306,False
+Folder,Meets Target,ElasticNetCV RMSE
+fold1,False,62420.3136
+fold10,False,30438.21153
+fold2,False,31485.68766
+fold3,False,32510.33837
+fold4,False,62347.42906
+fold5,False,30623.14803
+fold6,False,62093.33902
+fold7,False,31001.53666
+fold8,False,32538.17283
+fold9,False,62710.36982

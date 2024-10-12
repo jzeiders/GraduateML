@@ -27,3 +27,44 @@ Best parameters for ElasticNet: {'model__alpha': np.float64(0.000428133239871939
 Best parameters for ElasticNet: {'model__alpha': np.float64(0.0006951927961775605), 'model__l1_ratio': np.float64(0.55)}
 
 Target encoding dit much worse.
+
+# 10/12
+Going to try upgrading from random forest to XGBoost.
+
+
+Implementing initial XGBoost was limited success. 
+
+ model=XGBRegressor(
+            n_estimators=100,
+            learning_rate=0.1,
+            max_depth=5,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1
+        ),
+
+Changing the parameters greatly increased performance
+
+       model=XGBRegressor(
+            n_estimators=5000,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1
+        ),
+TODO: Train on these to get even better.
+
+
+Tried Elastic CV -> Did better but not great. With a CV of 5
+Trying CV 50 -> Din't do any better. That's becasuse I was wrong with what that does.
+
+Trying to do even better feature eng using automated script for dropping. Didn't really help
+
+Trying to use a much larger cv search -> same outcome. Our solution must be fairly decent.
+
+Standard Scaler is very important.
+
+Feature engineering does help but not as much I would think...

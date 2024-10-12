@@ -3,19 +3,25 @@ import numpy as np
 import warnings
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import ElasticNet, Lasso
+from sklearn.linear_model import ElasticNet, ElasticNetCV, Lasso
 from sklearn.ensemble import RandomForestRegressor
 from category_encoders import OneHotEncoder, TargetEncoder
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FunctionTransformer, Pipeline
 from sklearn.preprocessing import StandardScaler
 import os 
 import sys
 from sklearn.metrics import mean_squared_error
 import time
+from xgboost import XGBRegressor
+from sklearn.compose import TransformedTargetRegressor
+
 
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
+
+
+log_transform = FunctionTransformer(func=np.log,inverse_func=np.exp, validate=True)
 
 def create_pipeline(model, numerical_features, categorical_features, encoding):
     """
@@ -68,74 +74,69 @@ def model(data_dir, results_dir, encoding='onehot'):
     train_path = os.path.join(data_dir, 'train.csv')
     test_path = os.path.join(data_dir, 'test.csv')
 
+
+    manual_drop = ['Latitude', 'Longitude']
+    highly_correlated = ['TotRms_AbvGrd', 'Garage_Yr_Blt', 'Garage_Area', 'Latitude']
+
+    # Columns identified as potentially non-linear
+    potential_non_linear = ['BsmtFin_SF_1', 'BsmtFin_SF_2', 'Bsmt_Unf_SF', 'Low_Qual_Fin_SF', 
+                        'Bsmt_Half_Bath', 'Bedroom_AbvGr', 'Kitchen_AbvGr', 'Enclosed_Porch', 
+                        'Three_season_porch', 'Screen_Porch', 'Pool_Area', 'Misc_Val', 
+                        'Mo_Sold', 'Year_Sold']
+
+    sparse_categories = ['Street', 'Utilities', 'Land_Slope', 'Condition_2', 'Roof_Matl', 'Heating', 'Central_Air', 'Electrical', 'Functional', 'Garage_Qual', 'Garage_Cond', 'Paved_Drive', 'Pool_QC', 'Fence', 'Misc_Feature', 'Sale_Type']
+
+
     # Define columns to drop, most are due to many NA values
-    DROP_COLS = ['PID', 'Street', 'Utilities', 'Condition_2', 'Roof_Matl', 'Heating', 'Pool_QC', 'Misc_Feature', 'Low_Qual_Fin_SF', 'Pool_Area', 'Longitude','Latitude']
+    DROP_COLS = ['PID'] + highly_correlated + potential_non_linear + sparse_categories + manual_drop
 
     # Load training data
     train = pd.read_csv(train_path).drop(columns=DROP_COLS)
     
     # Separate response variable and features
-    y = np.log1p(train['Sale_Price'])  # Using log1p to handle possible zero or skewed values
+    y = train['Sale_Price']
     X = train.drop(['Sale_Price'], axis=1)
     
     # Identify numerical and categorical columns
     numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
 
-        # Create pipelines for different models
-    # Lasso Pipeline (with onehot encoding)
-    lasso_pipeline = create_pipeline(
-        model=Lasso(alpha=0.00054, max_iter=1000000, random_state=42),
-        numerical_features=numerical_cols,
-        categorical_features=categorical_cols,
-        encoding=encoding  # You can choose 'onehot' or 'target'
-    )
-
     
-    # Random Forest Pipeline (with target encoding)
-    rf_pipeline = create_pipeline(
-        model=RandomForestRegressor(
-            n_estimators=200, 
-            max_depth=20, 
-            min_samples_split=5, 
-            min_samples_leaf=1, 
-            max_features='sqrt',
-            random_state=42,
-            n_jobs=-1
-        ),
-        numerical_features=numerical_cols,
-        categorical_features=categorical_cols,
-        encoding='target'  # Target encoding often works better with tree-based models
-    )
-
-    # Create the ElasticNet pipeline without specifying alpha and l1_ratio
-    elastic_pipeline = create_pipeline(
-        model=ElasticNet(max_iter=1000000, random_state=42, alpha=0.01),
+    elastic_cv_pipeline = create_pipeline(
+        model= TransformedTargetRegressor(regressor=ElasticNetCV(cv=5, random_state=42), transformer=log_transform),
         numerical_features=numerical_cols,
         categorical_features=categorical_cols,
         encoding=encoding
     )
-
-
-    start_time = time.perf_counter()
-    elastic_pipeline.fit(X, y)
-    elasticnet_time = time.perf_counter() - start_time
-    print(f"ElasticNet model trained in {elasticnet_time:.2f} seconds.")
-
-    # Get the best estimator for ElasticNet
-
-
-    start_time = time.perf_counter()
-    lasso_pipeline.fit(X, y)
-    lasso_time = time.perf_counter() - start_time
-    print(f"Lasso model trained in {lasso_time:.2f} seconds.")
-
-
     
-    start_time = time.perf_counter()
-    rf_pipeline.fit(X, y)
-    rf_time = time.perf_counter() - start_time
-    print(f"Random Forest model trained in {rf_time:.2f} seconds.")
+    # Create XGBoost pipeline
+    xgb_pipeline_from_note = create_pipeline(
+        model = TransformedTargetRegressor(regressor=XGBRegressor(
+            n_estimators=5000,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            n_jobs=-1
+        ), transformer=log_transform),
+        numerical_features=numerical_cols,
+        categorical_features=categorical_cols,
+        encoding='onehot'  # XGBoost often works well with target encoding
+    )
+    
+        # Train models and measure time
+    models = {
+        'ElasticNetCV': elastic_cv_pipeline,
+        # 'XGBoost_From_Note' : xgb_pipeline_from_note
+    }
+
+    for name, pipeline in models.items():
+        start_time = time.perf_counter()
+        pipeline.fit(X, y)
+        train_time = time.perf_counter() - start_time
+        print(f"{name} model trained in {train_time:.2f} seconds.")
+
 
     # Step 2: Preprocess test data and make predictions
     # Load test data
@@ -143,58 +144,41 @@ def model(data_dir, results_dir, encoding='onehot'):
     test_pid = test['PID']
     X_test = test.drop(DROP_COLS, axis=1)
 
-    # Make predictions
-    preds_lasso = lasso_pipeline.predict(X_test)
-    preds_rf = rf_pipeline.predict(X_test)
-
-    # Prepare submission files
-    submission_lasso = pd.DataFrame({
-        'PID': test_pid,
-        'Sale_Price': np.expm1(preds_lasso)
-    })
-
-    submission_rf = pd.DataFrame({
-        'PID': test_pid,
-        'Sale_Price': np.expm1(preds_rf)
-    })
-
-    
     # Make sure the directory exists
     os.makedirs(results_dir, exist_ok=True)
 
-    
-    submission_1_path = os.path.join(results_dir, 'mysubmission1.txt')
-    submission_2_path = os.path.join(results_dir, 'mysubmission2.txt')
+    # Make predictions and create submissions
+    for name, pipeline in models.items():
+        preds = pipeline.predict(X_test)
+        submission = pd.DataFrame({
+            'PID': test_pid,
+            'Sale_Price': preds,
+        })
+        submission_path = os.path.join(results_dir, f'submission_{name.lower().replace(" ", "_")}.txt')
+        submission.to_csv(submission_path, sep=',', index=False, header=True)
 
-    # Save to text files without index and header
-    submission_lasso.to_csv(submission_1_path, sep=',', index=False, header=True)
-    submission_rf.to_csv(submission_2_path, sep=',', index=False, header=True)
     
+
     if is_test_dev:
         test_y = pd.read_csv(os.path.join(data_dir, 'test_y.csv'))
-        actual_prices = np.log1p(test_y['Sale_Price']) 
 
-        preds_lasso_test = lasso_pipeline.predict(X_test)
-        preds_rf_test = rf_pipeline.predict(X_test)
-        preds_elastic_test = elastic_pipeline.predict(X_test)
+        results = []
+        for name, pipeline in models.items():
+            preds = pipeline.predict(X_test)
+            rmse = np.sqrt(mean_squared_error(test_y['Sale_Price'], preds))
+            results.append({
+                'Model': name,
+                'RMSE': round(rmse, 5),
+                'Time': train_time  # Note: This will only have the time for the last trained model
+            })
 
-        rmse_lasso = np.sqrt(mean_squared_error(actual_prices, preds_lasso_test))
-        rmse_rf = np.sqrt(mean_squared_error(actual_prices, preds_rf_test))
-        rmse_elastic = np.sqrt(mean_squared_error(actual_prices, preds_elastic_test))
-
-        # Write thes results to a file using a pandas dataframe
         # Create a DataFrame to store the results
-        results_df = pd.DataFrame({
-            'Model': ['Lasso', 'Random Forest', "ElasticNet"],
-            'RMSE': [round(rmse_lasso,5), round(rmse_rf,5), round(rmse_elastic,5)],
-            'Time': [lasso_time, rf_time, elasticnet_time]
-
-        })
+        results_df = pd.DataFrame(results)
     
         # Write the results to a CSV file
         results_file = os.path.join(results_dir, 'rmse_results.csv')
         results_df.to_csv(results_file, index=False)
-
+        
 def evaluate():
     # Set the RMSE performance targets
     initial_target_rmse = 0.125
@@ -205,7 +189,6 @@ def evaluate():
 
     # Go through all the data folders in /data
     data_folders = os.listdir("data")
-    # Ensure you're iterating over the desired range; adjust indices if needed
     for folder in data_folders:
         folder_path = os.path.join("data", folder)
         if os.path.isdir(folder_path):
@@ -226,31 +209,24 @@ def evaluate():
                     results_df = pd.read_csv(rmse_file)
 
                     # Determine if this is part of the initial or subsequent split
-                    if len(all_results) < 5:
-                        target_rmse = initial_target_rmse
-                    else:
-                        target_rmse = subsequent_target_rmse
+                    target_rmse = initial_target_rmse if len(all_results) < 5 else subsequent_target_rmse
 
                     # Extract RMSE values for each model
-                    lasso_rmse = results_df.loc[results_df['Model'] == 'Lasso', 'RMSE'].values
-                    rf_rmse = results_df.loc[results_df['Model'] == 'Random Forest', 'RMSE'].values
+                    model_rmses = {}
+                    for _, row in results_df.iterrows():
+                        model_name = row['Model']
+                        rmse = row['RMSE']
+                        model_rmses[f'{model_name} RMSE'] = rmse
 
-                    # Handle cases where RMSE values might be missing
-                    if len(lasso_rmse) == 0 or len(rf_rmse) == 0:
-                        print(f"Warning: Missing RMSE values in {rmse_file}")
-                        continue
+                    # Check if all models meet the target
+                    meets_target = all(rmse < target_rmse for rmse in model_rmses.values())
 
-                    lasso_rmse = lasso_rmse[0]
-                    rf_rmse = rf_rmse[0]
+                    # Prepare result dictionary
+                    result = {'Folder': folder, 'Meets Target': meets_target}
+                    result.update(model_rmses)
 
-                    meets_target = lasso_rmse < target_rmse and rf_rmse < target_rmse
-                    all_results.append({
-                        'Folder': folder,
-                        'Lasso RMSE': lasso_rmse,
-                        'Random Forest RMSE': rf_rmse,
-                        'Elastic Net RMSE': results_df.loc[results_df['Model'] == 'ElasticNet', 'RMSE'].values[0],
-                        'Meets Target': meets_target
-                    })
+                    all_results.append(result)
+
                 except Exception as e:
                     print(f"Error processing {rmse_file}: {e}")
             else:
@@ -261,13 +237,15 @@ def evaluate():
         return
 
     # Convert the list of results to a DataFrame
-    all_results_df = pd.DataFrame(all_results)
+    all_results_df = pd.DataFrame(all_results).sort_values(by='Folder')
 
     # Save the summary to a CSV file
     summary_file = os.path.join("results", "evaluation_summary.csv")
     try:
         all_results_df.to_csv(summary_file, index=False)
         print(f"Summary saved to {summary_file}")
+        
+        print(all_results_df.to_markdown())
     except Exception as e:
         print(f"Error saving summary to {summary_file}: {e}")
 
@@ -278,11 +256,75 @@ def evaluate():
         print("All models met the RMSE targets.")
     
 
+def identify_problematic_features(df, target_column, correlation_threshold=0.8, missing_threshold=0.1, unique_threshold=0.95):
+    problematic_features = {}
+    
+    # Select only numeric columns
+    numeric_df = df.select_dtypes(include=['int64', 'float64'])
+    
+    # Check for highly correlated features
+    corr_matrix = numeric_df.corr().abs()
+    upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    highly_correlated = [column for column in upper_tri.columns if any(upper_tri[column] > correlation_threshold)]
+    if highly_correlated:
+        problematic_features['highly_correlated'] = highly_correlated
+
+    # Check for features with high percentage of missing values
+    missing_percentage = numeric_df.isnull().mean()
+    high_missing = missing_percentage[missing_percentage > missing_threshold].index.tolist()
+    if high_missing:
+        problematic_features['high_missing'] = high_missing
+
+    # Check for features with low variance (potentially irrelevant)
+    scaler = StandardScaler()
+    scaled_df = pd.DataFrame(scaler.fit_transform(numeric_df), columns=numeric_df.columns)
+    low_variance = scaled_df.columns[scaled_df.var() < 0.1].tolist()
+    if low_variance:
+        problematic_features['low_variance'] = low_variance
+
+    # Check for categorical variables with many levels (this check remains on all columns)
+    high_cardinality = [col for col in df.select_dtypes(include=['object', 'category']).columns 
+                        if df[col].nunique() / len(df) > unique_threshold]
+    if high_cardinality:
+        problematic_features['high_cardinality'] = high_cardinality
+
+    # Sparse Categories
+    sparse_categories = []
+    for col in df.select_dtypes(include=['object', 'category']).columns:
+        category_counts = df[col].value_counts(normalize=True)
+        if category_counts.max() > 0.95:
+            sparse_categories.append(col)
+    problematic_features['sparse_categories'] = sparse_categories
+
+    # Check for potential non-linear relationships with target
+    if target_column in numeric_df.columns:
+        X = numeric_df.drop(columns=[target_column])
+        y = numeric_df[target_column]
+        non_linear = []
+        for col in X.columns:
+            correlation = np.corrcoef(X[col], y)[0, 1]
+            if abs(correlation) < 0.2:  # Weak linear correlation might indicate non-linear relationship
+                non_linear.append(col)
+        if non_linear:
+            problematic_features['potential_non_linear'] = non_linear
+
+    return problematic_features
+
+def feature_eng():
+    print("Feature Engineering")
+    # Load the training data
+    train = pd.read_csv("data/fold1/train.csv")
+    problem = identify_problematic_features(train, 'Sale_Price')
+    print(problem)
+
+
 if __name__ == "__main__":
     is_test_dev = len(sys.argv) > 1
 
     if len(sys.argv) == 2 and sys.argv[1] == "evaluate":
         evaluate()
+    elif len(sys.argv) == 2 and sys.argv[1] == "feature_eng":
+        feature_eng()
     else: 
         data_dir = sys.argv[1] if is_test_dev else "."
         results_dir = os.path.join("results", sys.argv[1].split("/")[1]) if is_test_dev else "."
