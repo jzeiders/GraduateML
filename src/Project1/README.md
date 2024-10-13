@@ -10,7 +10,8 @@ python mymain.py evaluate
 
 ## Experiments
 Tried CV Search, didn't really help...
-In the one-hot encoder, handle_unknown='ignore' caused issues with NAN's in prediction.
+In the one-hot encoder, handle_unknown='ignore' caused issues with NAN's in prediction
+.
 Increasing the number of random forest predictors from 100 -> 500 did help performance
 
 Increase lasso iter's by a magnitude.
@@ -68,3 +69,9 @@ Trying to use a much larger cv search -> same outcome. Our solution must be fair
 Standard Scaler is very important.
 
 Feature engineering does help but not as much I would think...
+
+Trying to cap outliers at 0.01 & 0.99. OH THAT'S MUCH BETTER.
+
+Trying even tigther at 0.05 & 0.95. Event better but not quite there.
+
+Fix the non-linerrity check to compare with the log

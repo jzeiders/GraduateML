@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import warnings
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import ElasticNet, ElasticNetCV, Lasso
@@ -21,7 +22,7 @@ from sklearn.compose import TransformedTargetRegressor
 warnings.filterwarnings("ignore")
 
 
-log_transform = FunctionTransformer(func=np.log,inverse_func=np.exp, validate=True)
+log_transform = FunctionTransformer(func=np.log, validate=True)
 
 def create_pipeline(model, numerical_features, categorical_features, encoding):
     """
@@ -51,7 +52,8 @@ def create_pipeline(model, numerical_features, categorical_features, encoding):
     
     numeric_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler())
+        ('scaler', StandardScaler()),
+        ('outlier', OutlierCapper())
     ])
     
     preprocessor = ColumnTransformer(
@@ -69,6 +71,22 @@ def create_pipeline(model, numerical_features, categorical_features, encoding):
     
     return pipeline
 
+class OutlierCapper(BaseEstimator, TransformerMixin):
+    def __init__(self, lower_quantile=0.05, upper_quantile=0.95):
+        self.lower_quantile = lower_quantile
+        self.upper_quantile = upper_quantile
+        self.lower_bound = None
+        self.upper_bound = None
+    
+    def fit(self, X, y=None):
+        self.lower_bound = np.quantile(X, self.lower_quantile, axis=0)
+        self.upper_bound = np.quantile(X, self.upper_quantile, axis=0)
+        return self
+    
+    def transform(self, X):
+        X_capped = np.clip(X, self.lower_bound, self.upper_bound)
+        return X_capped
+
 def model(data_dir, results_dir, encoding='onehot'):
     # Construct paths for train.csv and test.csv based on the given directory
     train_path = os.path.join(data_dir, 'train.csv')
@@ -79,10 +97,7 @@ def model(data_dir, results_dir, encoding='onehot'):
     highly_correlated = ['TotRms_AbvGrd', 'Garage_Yr_Blt', 'Garage_Area', 'Latitude']
 
     # Columns identified as potentially non-linear
-    potential_non_linear = ['BsmtFin_SF_1', 'BsmtFin_SF_2', 'Bsmt_Unf_SF', 'Low_Qual_Fin_SF', 
-                        'Bsmt_Half_Bath', 'Bedroom_AbvGr', 'Kitchen_AbvGr', 'Enclosed_Porch', 
-                        'Three_season_porch', 'Screen_Porch', 'Pool_Area', 'Misc_Val', 
-                        'Mo_Sold', 'Year_Sold']
+    potential_non_linear = ['Lot_Frontage', 'BsmtFin_SF_1', 'BsmtFin_SF_2', 'Bsmt_Unf_SF', 'Low_Qual_Fin_SF', 'Bsmt_Half_Bath', 'Bedroom_AbvGr', 'Kitchen_AbvGr', 'Enclosed_Porch', 'Three_season_porch', 'Screen_Porch', 'Pool_Area', 'Misc_Val', 'Mo_Sold', 'Year_Sold']
 
     sparse_categories = ['Street', 'Utilities', 'Land_Slope', 'Condition_2', 'Roof_Matl', 'Heating', 'Central_Air', 'Electrical', 'Functional', 'Garage_Qual', 'Garage_Cond', 'Paved_Drive', 'Pool_QC', 'Fence', 'Misc_Feature', 'Sale_Type']
 
@@ -128,7 +143,7 @@ def model(data_dir, results_dir, encoding='onehot'):
         # Train models and measure time
     models = {
         'ElasticNetCV': elastic_cv_pipeline,
-        # 'XGBoost_From_Note' : xgb_pipeline_from_note
+        'XGBoost_From_Note' : xgb_pipeline_from_note
     }
 
     for name, pipeline in models.items():
@@ -140,9 +155,7 @@ def model(data_dir, results_dir, encoding='onehot'):
 
     # Step 2: Preprocess test data and make predictions
     # Load test data
-    test = pd.read_csv(test_path)
-    test_pid = test['PID']
-    X_test = test.drop(DROP_COLS, axis=1)
+    X_test = pd.read_csv(test_path)
 
     # Make sure the directory exists
     os.makedirs(results_dir, exist_ok=True)
@@ -151,7 +164,7 @@ def model(data_dir, results_dir, encoding='onehot'):
     for name, pipeline in models.items():
         preds = pipeline.predict(X_test)
         submission = pd.DataFrame({
-            'PID': test_pid,
+            'PID': X_test['PID'],
             'Sale_Price': preds,
         })
         submission_path = os.path.join(results_dir, f'submission_{name.lower().replace(" ", "_")}.txt')
@@ -162,10 +175,11 @@ def model(data_dir, results_dir, encoding='onehot'):
     if is_test_dev:
         test_y = pd.read_csv(os.path.join(data_dir, 'test_y.csv'))
 
+
         results = []
         for name, pipeline in models.items():
             preds = pipeline.predict(X_test)
-            rmse = np.sqrt(mean_squared_error(test_y['Sale_Price'], preds))
+            rmse = np.sqrt(mean_squared_error(np.log(test_y['Sale_Price']), preds))
             results.append({
                 'Model': name,
                 'RMSE': round(rmse, 5),
@@ -308,12 +322,18 @@ def identify_problematic_features(df, target_column, correlation_threshold=0.8, 
         if non_linear:
             problematic_features['potential_non_linear'] = non_linear
 
+    # Check for those with no-correlation to the target
+    low_corr_features_to_target = corr_matrix[corr_matrix['Sale_Price'] < 0.01].index.tolist()
+    problematic_features['low_corr_features_to_target'] = numeric_df[low_corr_features_to_target].columns.tolist()
+    
+
     return problematic_features
 
 def feature_eng():
     print("Feature Engineering")
     # Load the training data
     train = pd.read_csv("data/fold1/train.csv")
+    train['Sale_Price'] = np.log(train['Sale_Price'])
     problem = identify_problematic_features(train, 'Sale_Price')
     print(problem)
 
@@ -328,5 +348,6 @@ if __name__ == "__main__":
     else: 
         data_dir = sys.argv[1] if is_test_dev else "."
         results_dir = os.path.join("results", sys.argv[1].split("/")[1]) if is_test_dev else "."
+        
         model(data_dir, results_dir)
         

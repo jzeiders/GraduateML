@@ -1,11 +1,11 @@
-Folder,Meets Target,ElasticNetCV RMSE
-fold1,False,62420.3136
-fold10,False,30438.21153
-fold2,False,31485.68766
-fold3,False,32510.33837
-fold4,False,62347.42906
-fold5,False,30623.14803
-fold6,False,62093.33902
-fold7,False,31001.53666
-fold8,False,32538.17283
-fold9,False,62710.36982
+Folder,Meets Target,ElasticNetCV RMSE,XGBoost_From_Note RMSE
+fold1,True,0.12472,0.11904
+fold10,True,0.13081,0.12423
+fold2,True,0.12045,0.12407
+fold3,True,0.11625,0.11388
+fold4,True,0.12428,0.11759
+fold5,True,0.1159,0.11285
+fold6,False,0.13929,0.13375
+fold7,False,0.13934,0.13805
+fold8,False,0.13138,0.12987
+fold9,False,0.1381,0.13892
