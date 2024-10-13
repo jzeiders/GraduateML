@@ -75,3 +75,10 @@ Trying to cap outliers at 0.01 & 0.99. OH THAT'S MUCH BETTER.
 Trying even tigther at 0.05 & 0.95. Event better but not quite there.
 
 Fix the non-linerrity check to compare with the log
+
+Even tighter capping actually does much worse.
+
+Stuck so close at the moment, need to figure out how to boost performance on folds 6-9. So close but just a little off, maybe I can figure out what's wrong in fold 7 & 9. Those are definitely the worst.
+
+
+GOING FOR THE BIG REFACTOR BY AI. 
