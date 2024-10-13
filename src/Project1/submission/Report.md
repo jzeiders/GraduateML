@@ -1,13 +1,15 @@
 # Technical Report: Ames Housing Price Prediction
+John Zeiders 
 
 ## Section 1: Technical Details
 
 1. **Feature Selection:**
-   - Dropped several columns based on predefined configurations:
-     - Forced drop columns: 'Latitude', 'Longitude'
-     - Highly correlated features: 'TotRms_AbvGrd', 'Garage_Yr_Blt', 'Garage_Area', 'Latitude'
-     - Potential non-linear features: 'Lot_Frontage'
-     - Sparse categories: 'Street'
+Dropped several columns based on predefined configurations:
+
+  - Forced drop columns: 'Latitude', 'Longitude'
+  - Highly correlated features: 'TotRms_AbvGrd', 'Garage_Yr_Blt', 'Garage_Area', 'Latitude'
+  - Potential non-linear features: 'Lot_Frontage'
+  - Sparse categories: 'Street'
 
 2. **Feature Type Handling:**
    - Identified numeric features as those with types float or int in Pandas
@@ -17,7 +19,8 @@
    This is despite being interpreted as numeric by pandas.
 
 3. **Preprocessing Pipeline:**
-A pre-processing pipeline was implemented using sklearn
+A pre-processing pipeline was implemented using sklearn.
+
    - Numeric features:
      - Imputation: Median strategy for missing values
      - Scaling: StandardScaler applied
@@ -46,21 +49,6 @@ Two models were selected & trained using the implementations from SKLearn.
      - Column sample by tree: 0.8
      - Random state: 42
      - Utilized all available CPU cores (n_jobs=-1)
-
-## Target Variable Transformation
-
-- The target variable (Sale_Price) was log-transformed before model training
-- Predictions were exponentiated before saving to submission files
-
-## Prediction Process
-
-1. Fitted both models on the training data
-2. Applied the same preprocessing steps to the test data
-3. Generated predictions using both models
-4. Exponentiated the predictions to revert the log transformation
-5. Created two separate submission files (mysubmission1.txt and mysubmission2.txt) containing PID and predicted Sale_Price
-
-Note: The code uses a random seed (42) for reproducibility across runs.
 
 
 ## Section 2 Performance Metrics
