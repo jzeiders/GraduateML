@@ -26,7 +26,7 @@
     },
     "metrics": {
         "ElasticNet": {
-            "train_time": 0.16274229157716036,
+            "train_time": 0.16523837484419346,
             "RMSE": 0.39389
         }
     }

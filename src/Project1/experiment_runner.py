@@ -88,6 +88,7 @@ def create_pipeline(model, numerical_features, categorical_features, encoding):
 
 # Main function to run the model
 def model(config, config_dir, data_dir):
+    np.random.seed(42)
     encoding = config.get('encoding', 'onehot')
 
     # Feature engineering parameters
@@ -229,12 +230,22 @@ if __name__ == "__main__":
                     experiment_log = json.load(f)
                     for model_name, metrics in experiment_log['metrics'].items():
                         rmse = metrics.get('RMSE')
-                        if rmse is not None:
-                            all_rmses.append({'fold': data_dir, 'model': model_name, 'RMSE': rmse})
+                        train_time = metrics.get('train_time')
+                        if rmse is not None and train_time is not None:
+                            all_rmses.append({
+                                'fold': data_dir, 
+                                'model': model_name, 
+                                'RMSE': rmse,
+                                'Train Time (seconds)': train_time
+                            })
 
         # Print out all RMSEs for each fold
         if all_rmses:
+            
             final_results = pd.DataFrame(all_rmses).sort_values(by='RMSE')
+            final_results['fold_num'] = final_results['fold'].str.extract(r'fold(\d+)').astype(int)
+            final_results = final_results.sort_values(by='fold_num').drop(columns='fold')
+
             # Save as a markdown table
             with open(config_path + "/" + "results.md", "w") as f:
                 f.write(final_results.to_markdown(index=False))

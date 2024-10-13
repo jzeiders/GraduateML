@@ -69,12 +69,12 @@
     },
     "metrics": {
         "ElasticNetCV": {
-            "train_time": 1.5552729996852577,
+            "train_time": 1.6146158329211175,
             "RMSE": 0.12568
         },
         "XGBoost": {
-            "train_time": 6.086850750260055,
-            "RMSE": 0.12544
+            "train_time": 6.332875708118081,
+            "RMSE": 0.11988
         }
     }
 }
