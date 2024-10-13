@@ -1,0 +1,33 @@
+{
+    "encoding": "onehot",
+    "feature_engineering": {
+        "drop_columns": [
+            "Latitude",
+            "Longitude"
+        ],
+        "highly_correlated": [
+            "TotRms_AbvGrd",
+            "Garage_Yr_Blt",
+            "Garage_Area",
+            "Latitude"
+        ],
+        "potential_non_linear": [
+            "Lot_Frontage"
+        ],
+        "sparse_categories": [
+            "Street"
+        ]
+    },
+    "models": {
+        "ElasticNet": {
+            "type": "ElasticNet",
+            "params": {}
+        }
+    },
+    "metrics": {
+        "ElasticNet": {
+            "train_time": 0.16817837487906218,
+            "RMSE": 0.39389
+        }
+    }
+}

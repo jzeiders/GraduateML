@@ -6,10 +6,11 @@ import numpy as np
 import json
 import warnings
 import importlib.util
+from shutil import copyfile
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import ElasticNetCV
+from sklearn.linear_model import ElasticNetCV, ElasticNet
 from sklearn.ensemble import RandomForestRegressor
 from category_encoders import OneHotEncoder, TargetEncoder
 from sklearn.pipeline import FunctionTransformer, Pipeline
@@ -22,8 +23,10 @@ from xgboost import XGBRegressor
 warnings.filterwarnings("ignore")
 
 # Function to load Python configuration files
-def load_config(config_path):
-    spec = importlib.util.spec_from_file_location("config_module", config_path)
+def load_config(config_dir):
+    spec = importlib.util.spec_from_file_location("config_module", config_dir + "/config.py")
+    if spec is None:
+        raise FileNotFoundError(f"Config file not found at {config_dir}")
     config_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config_module)
     return config_module.config
@@ -84,10 +87,7 @@ def create_pipeline(model, numerical_features, categorical_features, encoding):
     return pipeline
 
 # Main function to run the model
-def model(config):
-    # Extract parameters from config
-    data_dir = config['data_dir']
-    results_dir = config['results_dir']
+def model(config, config_dir, data_dir):
     encoding = config.get('encoding', 'onehot')
 
     # Feature engineering parameters
@@ -108,7 +108,7 @@ def model(config):
 
     # Identify numerical and categorical columns
     numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+    categorical_cols = X.select_dtypes(include=(['object'])).columns.tolist()
 
     # Create pipelines for models defined in config
     models = {}
@@ -118,6 +118,8 @@ def model(config):
 
         if model_type == 'ElasticNetCV':
             regressor = ElasticNetCV(**model_params)
+        elif model_type == 'ElasticNet':
+            regressor = ElasticNet(**model_params)
         elif model_type == 'XGBRegressor':
             regressor = XGBRegressor(**model_params)
         elif model_type == 'RandomForestRegressor':
@@ -140,9 +142,6 @@ def model(config):
 
     # Logging setup
     experiment_log = {
-        'experiment_name': config.get('experiment_name', 'default_experiment'),
-        'data_dir': data_dir,
-        'results_dir': results_dir,
         'encoding': encoding,
         'feature_engineering': config['feature_engineering'],
         'models': config['models'],
@@ -157,27 +156,16 @@ def model(config):
         print(f"{name} model trained in {train_time:.2f} seconds.")
         experiment_log['metrics'][name] = {'train_time': train_time}
 
-    # Evaluate model on test data if available
-    if 'test_y' in config:
-        test_y = pd.read_csv(os.path.join(data_dir, 'test_y.csv'))
-        X_test = pd.read_csv(os.path.join(data_dir, 'test.csv')).drop(columns=DROP_COLS, errors='ignore')
+    test_y = pd.read_csv(os.path.join(data_dir, 'test_y.csv'))
+    X_test = pd.read_csv(os.path.join(data_dir, 'test.csv')).drop(columns=DROP_COLS, errors='ignore')
 
-        for name, pipeline in models.items():
-            preds = pipeline.predict(X_test)
-            rmse = np.sqrt(mean_squared_error(np.log(test_y['Sale_Price']), preds))
-            experiment_log['metrics'][name]['RMSE'] = round(rmse, 5)
-
-            # Save submission file
-            submission = pd.DataFrame({
-                'PID': X_test['PID'],
-                'Sale_Price': preds,
-            })
-            submission_path = os.path.join(results_dir, f'submission_{name.lower().replace(" ", "_")}.txt')
-            submission.to_csv(submission_path, sep=',', index=False, header=True)
+    for name, pipeline in models.items():
+        preds = pipeline.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(np.log(test_y['Sale_Price']), preds))
+        experiment_log['metrics'][name]['RMSE'] = round(rmse, 5)
 
     # Save experiment log
-    os.makedirs(results_dir, exist_ok=True)
-    log_file = os.path.join(results_dir, 'experiment_log.json')
+    log_file = os.path.join(config_dir, 'experiment_log.json')
     with open(log_file, 'w') as f:
         json.dump(experiment_log, f, indent=4)
 
@@ -214,10 +202,39 @@ def aggregate_results(results_root_dir):
 # Main entry point
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "aggregate":
-        aggregate_results("results")
+        aggregate_results("experiments")
     elif len(sys.argv) == 2:
         config_path = sys.argv[1]
         config = load_config(config_path)
-        model(config)
+
+        # Get all subdirectories in the data folder (e.g., fold1, fold2, ..., fold10)
+        data_root = 'data'
+        data_folders = [f.path for f in os.scandir(data_root) if f.is_dir()]
+
+        all_rmses = []
+
+        # Loop through each fold directory (e.g., data/fold1)
+        for data_dir in data_folders:
+            print(f"Running experiment on {data_dir}...")
+            model(config, config_path, data_dir)
+
+            # After running the model, load the RMSE from the log for that fold
+            log_file = os.path.join(config_path, 'experiment_log.json')
+
+            if os.path.exists(log_file):
+                with open(log_file, 'r') as f:
+                    experiment_log = json.load(f)
+                    for model_name, metrics in experiment_log['metrics'].items():
+                        rmse = metrics.get('RMSE')
+                        if rmse is not None:
+                            all_rmses.append({'fold': data_dir, 'model': model_name, 'RMSE': rmse})
+
+        # Print out all RMSEs for each fold
+        if all_rmses:
+            print("\nRMSE results across all folds:")
+            for result in all_rmses:
+                print(f"Fold: {result['fold']}, Model: {result['model']}, RMSE: {result['RMSE']}")
+        else:
+            print("No RMSE results found.")
     else:
-        print("Usage: python script.py <config_path> or python script.py aggregate")
+         print("Usage: python script.py <config_dir> or python script.py aggregate")
