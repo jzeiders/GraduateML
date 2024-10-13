@@ -1,0 +1,22 @@
+| fold        | model        |    RMSE |
+|:------------|:-------------|--------:|
+| data/fold5  | ElasticNetCV | 0.11135 |
+| data/fold5  | XGBoost      | 0.11186 |
+| data/fold3  | ElasticNetCV | 0.11275 |
+| data/fold3  | XGBoost      | 0.11505 |
+| data/fold2  | ElasticNetCV | 0.11578 |
+| data/fold4  | XGBoost      | 0.11622 |
+| data/fold4  | ElasticNetCV | 0.11922 |
+| data/fold1  | XGBoost      | 0.11943 |
+| data/fold1  | ElasticNetCV | 0.12012 |
+| data/fold2  | XGBoost      | 0.12349 |
+| data/fold8  | XGBoost      | 0.12352 |
+| data/fold10 | XGBoost      | 0.12544 |
+| data/fold10 | ElasticNetCV | 0.12568 |
+| data/fold8  | ElasticNetCV | 0.12754 |
+| data/fold6  | XGBoost      | 0.12819 |
+| data/fold9  | XGBoost      | 0.13071 |
+| data/fold9  | ElasticNetCV | 0.13241 |
+| data/fold7  | XGBoost      | 0.13263 |
+| data/fold7  | ElasticNetCV | 0.13293 |
+| data/fold6  | ElasticNetCV | 0.13436 |

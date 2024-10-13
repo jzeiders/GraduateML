@@ -11,21 +11,10 @@ config = {
             'type': 'ElasticNetCV',
             'params': {
                 'cv': 5,
+                'l1_ratio': [0.1, 0.5, 0.7, 0.9, 0.95, 0.99, 1],
                 'random_state': 42,
             },
-        },
-        'XGBoost': {
-            'type': 'XGBRegressor',
-            'params': {
-                'n_estimators': 5000,
-                'learning_rate': 0.05,
-                'max_depth': 6,
-                'subsample': 0.8,
-                'colsample_bytree': 0.8,
-                'random_state': 42,
-                'n_jobs': -1,
-            },
-        },
+        }
     },
 
     'encoding': 'onehot',  # Options: 'onehot' or 'target'

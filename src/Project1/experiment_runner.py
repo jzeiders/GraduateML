@@ -95,6 +95,7 @@ def model(config, config_dir, data_dir):
     highly_correlated = config['feature_engineering']['highly_correlated']
     potential_non_linear = config['feature_engineering']['potential_non_linear']
     sparse_categories = config['feature_engineering']['sparse_categories']
+    numeric_as_categorical = config['feature_engineering'].get('numeric_as_categorical', [])
 
     DROP_COLS = ['PID'] + highly_correlated + potential_non_linear + sparse_categories + manual_drop
 
@@ -106,9 +107,11 @@ def model(config, config_dir, data_dir):
     y = train['Sale_Price']
     X = train.drop(['Sale_Price'], axis=1)
 
-    # Identify numerical and categorical columns
-    numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_cols = X.select_dtypes(include=(['object'])).columns.tolist()
+    # Set difference for numerical columns
+    numerical_cols = list(set(X.select_dtypes(include=['int64', 'float64']).columns.tolist()) - set(numeric_as_categorical))
+
+    # Combine categorical columns with numeric columns to be treated as categorical
+    categorical_cols = X.select_dtypes(include=['object']).columns.tolist() + numeric_as_categorical
 
     # Create pipelines for models defined in config
     models = {}
@@ -231,9 +234,10 @@ if __name__ == "__main__":
 
         # Print out all RMSEs for each fold
         if all_rmses:
-            print("\nRMSE results across all folds:")
-            for result in all_rmses:
-                print(f"Fold: {result['fold']}, Model: {result['model']}, RMSE: {result['RMSE']}")
+            final_results = pd.DataFrame(all_rmses).sort_values(by='RMSE')
+            # Save as a markdown table
+            with open(config_path + "/" + "results.md", "w") as f:
+                f.write(final_results.to_markdown(index=False))
         else:
             print("No RMSE results found.")
     else:

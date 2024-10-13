@@ -19,15 +19,27 @@
         ]
     },
     "models": {
-        "ElasticNet": {
-            "type": "ElasticNet",
-            "params": {}
+        "ElasticNetCV": {
+            "type": "ElasticNetCV",
+            "params": {
+                "cv": 5,
+                "l1_ratio": [
+                    0.1,
+                    0.5,
+                    0.7,
+                    0.9,
+                    0.95,
+                    0.99,
+                    1
+                ],
+                "random_state": 42
+            }
         }
     },
     "metrics": {
-        "ElasticNet": {
-            "train_time": 0.16274229157716036,
-            "RMSE": 0.39389
+        "ElasticNetCV": {
+            "train_time": 1.9048425001092255,
+            "RMSE": 0.12639
         }
     }
 }
