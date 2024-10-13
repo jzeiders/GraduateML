@@ -8,6 +8,8 @@ from sklearn.pipeline import Pipeline
 from category_encoders import OneHotEncoder
 from xgboost import XGBRegressor
 from sklearn.base import BaseEstimator, TransformerMixin
+import warnings
+warnings.filterwarnings("ignore")
 
 # Configuration
 # I had created a configuration based experiment runner for testing & tuning the models.
