@@ -1,115 +1,6 @@
 import numpy as np
 
 
-def forward_pass(data, w, A, B):
-    """
-    Compute forward probabilities alpha(t,j)
-    
-    Args:
-        data: T-by-1 observation sequence
-        w: Initial state distribution (mz-by-1)
-        A: Transition matrix (mz-by-mz)
-        B: Emission matrix (mz-by-mx)
-    
-    Returns:
-        alpha: Forward probabilities (T-by-mz)
-        c: Scaling factors (T-by-1)
-    """
-    T = len(data)
-    mz = len(w)
-    alpha = np.zeros((T, mz))
-    c = np.zeros(T)
-    
-    # Initialize first time step
-    alpha[0, :] = w * B[:, data[0]]
-    c[0] = 1.0 / np.sum(alpha[0, :])
-    alpha[0, :] *= c[0]
-    
-    # Forward recursion
-    for t in range(1, T):
-        for j in range(mz):
-            alpha[t, j] = np.sum(alpha[t-1, :] * A[:, j]) * B[j, data[t]]
-        c[t] = 1.0 / np.sum(alpha[t, :])
-        alpha[t, :] *= c[t]
-    
-    return alpha, c
-
-def backward_pass(data, A, B, c):
-    """
-    Compute backward probabilities beta(t,j)
-    
-    Args:
-        data: T-by-1 observation sequence
-        A: Transition matrix
-        B: Emission matrix
-        c: Scaling factors from forward pass
-    
-    Returns:
-        beta: Backward probabilities (T-by-mz)
-    """
-    T = len(data)
-    mz = A.shape[0]
-    beta = np.zeros((T, mz))
-    
-    # Initialize last time step
-    beta[T-1, :] = c[T-1]
-    
-    # Backward recursion
-    for t in range(T-2, -1, -1):
-        for i in range(mz):
-            beta[t, i] = np.sum(A[i, :] * B[:, data[t+1]] * beta[t+1, :]) * c[t]
-    
-    return beta
-
-def BW_onestep(data, w, A, B):
-    """
-    One step of the Baum-Welch algorithm (E-step + M-step)
-    
-    Args:
-        data: T-by-1 observation sequence
-        w: Initial state distribution (mz-by-1)
-        A: Current transition matrix (mz-by-mz)
-        B: Current emission matrix (mz-by-mx)
-    
-    Returns:
-        A_new: Updated transition matrix
-        B_new: Updated emission matrix
-    """
-    T = len(data)
-    mz = A.shape[0]
-    mx = B.shape[1]
-    
-    # E-step: Compute forward and backward probabilities
-    alpha, c = forward_pass(data, w, A, B)
-    beta = backward_pass(data, A, B, c)
-    
-    # Compute xi(t,i,j) = P(z_t=i, z_{t+1}=j | x_{1:T})
-    xi = np.zeros((T-1, mz, mz))
-    for t in range(T-1):
-        denominator = np.sum(alpha[t, :] * A * B[:, data[t+1]].reshape(-1, 1) * beta[t+1, :])
-        for i in range(mz):
-            for j in range(mz):
-                xi[t, i, j] = alpha[t, i] * A[i, j] * B[j, data[t+1]] * beta[t+1, j] / denominator
-    
-    # Compute gamma(t,j) = P(z_t=j | x_{1:T})
-    gamma = alpha * beta
-    
-    # M-step: Update parameters
-    # Update A
-    A_new = np.zeros_like(A)
-    for i in range(mz):
-        denominator = np.sum(gamma[:-1, i])
-        for j in range(mz):
-            A_new[i, j] = np.sum(xi[:, i, j]) / denominator
-    
-    # Update B
-    B_new = np.zeros_like(B)
-    for j in range(mz):
-        denominator = np.sum(gamma[:, j])
-        for k in range(mx):
-            B_new[j, k] = np.sum(gamma[data == k, j]) / denominator
-    
-    return A_new, B_neww
 import numpy as np
 
 def forward_pass(data, w, A, B):
@@ -117,14 +8,14 @@ def forward_pass(data, w, A, B):
     Compute forward probabilities alpha(t,j)
     
     Args:
-        data: T-by-1 observation sequence
-        w: Initial state distribution (mz-by-1)
+        data: T-by-1 observation sequence (1D array)
+        w: Initial state distribution (mz,)
         A: Transition matrix (mz-by-mz)
         B: Emission matrix (mz-by-mx)
     
     Returns:
         alpha: Forward probabilities (T-by-mz)
-        c: Scaling factors (T-by-1)
+        c: Scaling factors (T,)
     """
     T = len(data)
     mz = len(w)
@@ -138,8 +29,7 @@ def forward_pass(data, w, A, B):
     
     # Forward recursion
     for t in range(1, T):
-        for j in range(mz):
-            alpha[t, j] = np.sum(alpha[t-1, :] * A[:, j]) * B[j, data[t]]
+        alpha[t, :] = np.dot(alpha[t-1, :], A) * B[:, data[t]]
         c[t] = 1.0 / np.sum(alpha[t, :])
         alpha[t, :] *= c[t]
     
@@ -150,10 +40,10 @@ def backward_pass(data, A, B, c):
     Compute backward probabilities beta(t,j)
     
     Args:
-        data: T-by-1 observation sequence
-        A: Transition matrix
-        B: Emission matrix
-        c: Scaling factors from forward pass
+        data: T-by-1 observation sequence (1D array)
+        A: Transition matrix (mz-by-mz)
+        B: Emission matrix (mz-by-mx)
+        c: Scaling factors from forward pass (T,)
     
     Returns:
         beta: Backward probabilities (T-by-mz)
@@ -167,8 +57,8 @@ def backward_pass(data, A, B, c):
     
     # Backward recursion
     for t in range(T-2, -1, -1):
-        for i in range(mz):
-            beta[t, i] = np.sum(A[i, :] * B[:, data[t+1]] * beta[t+1, :]) * c[t]
+        beta[t, :] = np.dot(A, (B[:, data[t+1]] * beta[t+1, :]))
+        beta[t, :] *= c[t]
     
     return beta
 
@@ -177,8 +67,8 @@ def BW_onestep(data, w, A, B):
     One step of the Baum-Welch algorithm (E-step + M-step)
     
     Args:
-        data: T-by-1 observation sequence
-        w: Initial state distribution (mz-by-1)
+        data: T-by-1 observation sequence (1D array)
+        w: Initial state distribution (mz,)
         A: Current transition matrix (mz-by-mz)
         B: Current emission matrix (mz-by-mx)
     
@@ -197,28 +87,22 @@ def BW_onestep(data, w, A, B):
     # Compute xi(t,i,j) = P(z_t=i, z_{t+1}=j | x_{1:T})
     xi = np.zeros((T-1, mz, mz))
     for t in range(T-1):
-        denominator = np.sum(alpha[t, :] * A * B[:, data[t+1]].reshape(-1, 1) * beta[t+1, :])
-        for i in range(mz):
-            for j in range(mz):
-                xi[t, i, j] = alpha[t, i] * A[i, j] * B[j, data[t+1]] * beta[t+1, j] / denominator
+        denominator = np.dot(alpha[t, :], A * B[:, data[t+1]].reshape(-1,1)) @ beta[t+1, :]
+        xi[t, :, :] = (alpha[t, :, np.newaxis] * A * B[:, data[t+1]].reshape(-1,1) * beta[t+1, :]) / denominator
     
     # Compute gamma(t,j) = P(z_t=j | x_{1:T})
     gamma = alpha * beta
     
     # M-step: Update parameters
     # Update A
-    A_new = np.zeros_like(A)
-    for i in range(mz):
-        denominator = np.sum(gamma[:-1, i])
-        for j in range(mz):
-            A_new[i, j] = np.sum(xi[:, i, j]) / denominator
+    A_new = np.sum(xi, axis=0) / np.sum(gamma[:-1, :], axis=0)[:, np.newaxis]
     
     # Update B
     B_new = np.zeros_like(B)
     for j in range(mz):
-        denominator = np.sum(gamma[:, j])
         for k in range(mx):
-            B_new[j, k] = np.sum(gamma[data == k, j]) / denominator
+            B_new[j, k] = np.sum(gamma[data == k, j])
+        B_new[j, :] /= np.sum(gamma[:, j])
     
     return A_new, B_new
 
@@ -227,11 +111,11 @@ def myBW(data, mz, mx, initial_params, itmax):
     Main Baum-Welch algorithm with specified initial parameters
     
     Args:
-        data: T-by-1 observation sequence
+        data: T-by-1 observation sequence (1D array)
         mz: Number of hidden states
         mx: Number of observation symbols
         initial_params: Dictionary containing initial parameters:
-            'w': Initial state distribution (mz-by-1)
+            'w': Initial state distribution (mz,)
             'A': Initial transition matrix (mz-by-mz)
             'B': Initial emission matrix (mz-by-mx)
         itmax: Maximum number of iterations
@@ -241,6 +125,9 @@ def myBW(data, mz, mx, initial_params, itmax):
         B_final: Final emission matrix
         ll_final: Final log likelihood
     """
+    # Ensure data is a 1D array
+    data = np.asarray(data).flatten()
+    
     # Extract initial parameters
     w = initial_params['w']
     A = initial_params['A']
@@ -252,12 +139,13 @@ def myBW(data, mz, mx, initial_params, itmax):
     for iteration in range(itmax):
         # Compute log likelihood
         alpha, c = forward_pass(data, w, A, B)
-        current_ll = -np.sum(np.log(c))  # Negative because c contains reciprocals
+        current_ll = np.sum(np.log(1.0 / c))  # Equivalent to sum(log(sum(alpha)))
         
-        # Check convergence (you might want to adjust the tolerance)
-        if abs(current_ll - prev_ll) < 1e-6:
+        # Check convergence (relative tolerance)
+        if iteration > 0 and abs(current_ll - prev_ll) < 1e-6 * abs(prev_ll):
+            print(f"Converged at iteration {iteration}")
             break
-            
+                
         prev_ll = current_ll
         
         # Update parameters
