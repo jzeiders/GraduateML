@@ -1,7 +1,6 @@
 import numpy as np
-
-
-import numpy as np
+import requests
+from io import StringIO
 
 def forward_pass(data, w, A, B):
     """
@@ -88,10 +87,13 @@ def BW_onestep(data, w, A, B):
     xi = np.zeros((T-1, mz, mz))
     for t in range(T-1):
         denominator = np.dot(alpha[t, :], A * B[:, data[t+1]].reshape(-1,1)) @ beta[t+1, :]
+        if denominator < 1e-16:
+            denominator = 1e-16  # Prevent division by zero
         xi[t, :, :] = (alpha[t, :, np.newaxis] * A * B[:, data[t+1]].reshape(-1,1) * beta[t+1, :]) / denominator
     
     # Compute gamma(t,j) = P(z_t=j | x_{1:T})
     gamma = alpha * beta
+    gamma /= gamma.sum(axis=1, keepdims=True)  # Explicit normalization
     
     # M-step: Update parameters
     # Update A
@@ -133,23 +135,22 @@ def myBW(data, mz, mx, initial_params, itmax):
     A = initial_params['A']
     B = initial_params['B']
     
-    # Initialize log likelihood
-    prev_ll = -np.inf
     
     for iteration in range(itmax):
         # Compute log likelihood
         alpha, c = forward_pass(data, w, A, B)
         current_ll = np.sum(np.log(1.0 / c))  # Equivalent to sum(log(sum(alpha)))
         
-        # Check convergence (relative tolerance)
-        if iteration > 0 and abs(current_ll - prev_ll) < 1e-6 * abs(prev_ll):
-            print(f"Converged at iteration {iteration}")
-            break
-                
-        prev_ll = current_ll
         
         # Update parameters
         A, B = BW_onestep(data, w, A, B)
+        
+        # Debugging: Print row sums to ensure they sum to 1
+        if (iteration + 1) % 10 == 0 or iteration == 0:
+            print(f"\nIteration {iteration + 1}")
+            print("Row sums of A:", A.sum(axis=1))
+            print("Row sums of B:", B.sum(axis=1))
+            print(f"Log-Likelihood: {current_ll}")
     
     return A, B, current_ll
 
@@ -206,14 +207,14 @@ def myViterbi(data, A, B, w):
 
     return Z + 1  # Convert to 1-based indexing as per the benchmark
 
-def load_data(file_path):
+def load_data(file_path_or_url):
     """
-    Load the observation sequence from a file.
+    Load the observation sequence from a file or URL.
 
     Parameters:
     -----------
-    file_path: str
-        Path to the data file
+    file_path_or_url: str
+        Path to the data file or URL
 
     Returns:
     --------
@@ -221,19 +222,24 @@ def load_data(file_path):
         Sequence of observations as integers starting from 0
     """
     try:
-        data = np.loadtxt(file_path, dtype=int)
+        if file_path_or_url.startswith('http://') or file_path_or_url.startswith('https://'):
+            response = requests.get(file_path_or_url)
+            response.raise_for_status()  # Ensure we notice bad responses
+            data = np.loadtxt(StringIO(response.text), dtype=int)
+        else:
+            data = np.loadtxt(file_path_or_url, dtype=int)
         return data
     except Exception as e:
         raise ValueError(f"Error loading data: {e}")
 
-def load_Z(file_path):
+def load_Z(file_path_or_url):
     """
-    Load the benchmark hidden state sequence from a file.
+    Load the benchmark hidden state sequence from a file or URL.
 
     Parameters:
     -----------
-    file_path: str
-        Path to the hidden state data file
+    file_path_or_url: str
+        Path to the hidden state data file or URL
 
     Returns:
     --------
@@ -241,10 +247,33 @@ def load_Z(file_path):
         Sequence of hidden states as integers starting from 1
     """
     try:
-        Z = np.loadtxt(file_path, dtype=int)
+        if file_path_or_url.startswith('http://') or file_path_or_url.startswith('https://'):
+            response = requests.get(file_path_or_url)
+            response.raise_for_status()
+            Z = np.loadtxt(StringIO(response.text), dtype=int)
+        else:
+            Z = np.loadtxt(file_path_or_url, dtype=int)
         return Z
     except Exception as e:
         raise ValueError(f"Error loading hidden states: {e}")
+
+def validate_data(data, mx):
+    """
+    Validate that all observation symbols are within the range [0, mx-1].
+
+    Parameters:
+    -----------
+    data: ndarray, shape (T,)
+        Sequence of observations
+    mx: int
+        Number of observation symbols
+
+    Raises:
+    -------
+    ValueError: If any observation symbol is out of range.
+    """
+    if not np.all((data >= 0) & (data < mx)):
+        raise ValueError(f"Data contains symbols outside the range [0, {mx-1}].")
 
 # Test functions
 def test_BaumWelch(data, mz, mx, initial_params, itmax, expected_A=None, expected_B=None):
@@ -271,10 +300,14 @@ def test_BaumWelch(data, mz, mx, initial_params, itmax, expected_A=None, expecte
     A_final, B_final, ll_final = myBW(data, mz, mx, initial_params, itmax)
     print("\nFinal A matrix:")
     print(A_final)
+    print("Row sums of A:", A_final.sum(axis=1))
+    
     print("\nFinal B matrix:")
     print(B_final)
+    print("Row sums of B:", B_final.sum(axis=1))
+    
     print(f"\nFinal Log-Likelihood: {ll_final}")
-
+    
     if expected_A is not None:
         print("\nDifference in A matrix:")
         print(A_final - expected_A)
@@ -335,9 +368,11 @@ def initialize_parameters(mz, mx):
                   [0.5, 0.5]])
 
     # Initialize B as per the test case
-    # Given B = [[1/9, 1/6, 3/6], [5/9, 2/6, 5/6]]
     B = np.array([[1/9, 1/6, 3/6],
                   [5/9, 2/6, 5/6]])
+
+    # Normalize the rows of B to ensure they sum to 1
+    B /= B.sum(axis=1, keepdims=True)
 
     return {'A': A, 'B': B, 'w': w}
 
@@ -348,13 +383,15 @@ if __name__ == "__main__":
     Z_benchmark_file = 'https://liangfgithub.github.io/Data/Coding4_part2_Z.txt'
 
     # Load data
-    data = load_data(data_file) - 1  # Convert to 0-based indexing on states (TODO: Do this in a generic)
-    print(data.shape)
+    data = load_data(data_file) - 1  # Convert to 0-based indexing
     print(f"Loaded data sequence of length {len(data)}.")
     
     # Define parameters
     mx = 3  # Number of distinct observation symbols
     mz = 2  # Number of hidden states
+
+    # Validate data
+    validate_data(data, mx)
 
     # Initialize parameters as specified
     initial_params = initialize_parameters(mz, mx)
@@ -365,32 +402,11 @@ if __name__ == "__main__":
     expected_B = np.array([[0.22159897, 0.20266127, 0.57573976],
                            [0.34175148, 0.17866665, 0.47958186]])
 
-    # Test Baum-Welch with itmax=10 for demonstration (adjust as needed)
+    # Test Baum-Welch with itmax=100 for demonstration (adjust as needed)
     print("\n--- Running Baum-Welch Algorithm for 100 Iterations ---")
     test_BaumWelch(data, mz, mx, initial_params, itmax=100, expected_A=expected_A, expected_B=expected_B)
 
     # Uncomment and modify the following lines to run Viterbi and additional tests with actual data files
-
-    # # File paths (update these paths as per your directory structure)
-    # data_file = 'path_to_coding4_part2_data.txt'
-    # Z_benchmark_file = 'path_to_Coding4_part2_Z.txt'
-
-    # # Load data
-    # data = load_data(data_file) - 1  # Convert to 0-based indexing
-    # print(f"Loaded data sequence of length {len(data)}.")
-
-    # # Initialize parameters
-    # initial_params = initialize_parameters(mz, mx)
-
-    # # Expected matrices after 100 iterations (optional)
-    # expected_A = np.array([[0.49793938, 0.50206062],
-    #                        [0.44883431, 0.55116569]])
-    # expected_B = np.array([[0.22159897, 0.20266127, 0.57573976],
-    #                        [0.34175148, 0.17866665, 0.47958186]])
-
-    # # Test Baum-Welch with itmax=100
-    # print("\n--- Running Baum-Welch Algorithm for 100 Iterations ---")
-    # test_BaumWelch(data, mz, mx, initial_params, itmax=100, expected_A=expected_A, expected_B=expected_B)
 
     # # Run Viterbi
     # print("\n--- Running Viterbi Algorithm ---")
