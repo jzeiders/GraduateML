@@ -93,7 +93,7 @@ def BW_onestep(data, w, A, B):
     
     # Compute gamma(t,j) = P(z_t=j | x_{1:T})
     gamma = alpha * beta
-    gamma /= gamma.sum(axis=1, keepdims=True)  # Explicit normalization
+    gamma /= np.sum(gamma, axis=(1,2), keepdims=True).reshape(-1,1)
     
     # M-step: Update parameters
     # Update A
