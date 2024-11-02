@@ -87,13 +87,11 @@ def BW_onestep(data, w, A, B):
     xi = np.zeros((T-1, mz, mz))
     for t in range(T-1):
         denominator = np.dot(alpha[t, :], A * B[:, data[t+1]].reshape(-1,1)) @ beta[t+1, :]
-        if denominator < 1e-16:
-            denominator = 1e-16  # Prevent division by zero
         xi[t, :, :] = (alpha[t, :, np.newaxis] * A * B[:, data[t+1]].reshape(-1,1) * beta[t+1, :]) / denominator
     
     # Compute gamma(t,j) = P(z_t=j | x_{1:T})
     gamma = alpha * beta
-    gamma /= np.sum(gamma, axis=(1,2), keepdims=True).reshape(-1,1)
+    gamma /= gamma.sum(axis=1, keepdims=True)  # Explicit normalization
     
     # M-step: Update parameters
     # Update A
