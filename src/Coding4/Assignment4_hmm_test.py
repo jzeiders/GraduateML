@@ -290,6 +290,8 @@ def BW_onestep(data, w, A, B):
                 gammas[t,i,j] = alpha[t,i] * A[i,j] * B[j,data[t+1]] * beta[t+1,j]
     
     
+
+    gammas_j = np.sum(gammas, axis=2)
     
     # M-step: Update parameters
     # Update A
@@ -301,7 +303,7 @@ def BW_onestep(data, w, A, B):
                 numerator += gammas[t,i,j]
             denominator = 0
             for jprime in range(mz):
-                for t in range(T-1):
+                for t in range(1, T-1):
                     denominator += gammas[t,i,jprime]
             A_new[i,j] = numerator / denominator
 
@@ -312,12 +314,10 @@ def BW_onestep(data, w, A, B):
         for l in range(mx):
             numerator = 0
             denominator = 0
-            for t in range(T-1):
+            for t in range(T - 1):
                 if data[t] == l:
-                    for j in range(mz):
-                        numerator += gammas[t,i,j]
-                for j in range(mz):
-                    denominator += gammas[t,i,j]
+                    numerator += gammas_j[t,i]
+                denominator += gammas_j[t,i]
             B_new[i,l] = numerator / denominator
 
                 
@@ -462,7 +462,7 @@ class TestBaumWelch(unittest.TestCase):
         self.assertTrue(ll_new >= ll_old - 1e-10,
                        "Log-likelihood decreased after update")
 
-def myBW(data, mz, mx, initial_params, itmax):
+def myBW(data, initial_params, itmax):
     """
     Main Baum-Welch algorithm with specified initial parameters
     
@@ -509,38 +509,13 @@ def myBW(data, mz, mx, initial_params, itmax):
     return A, B, current_ll
 
 
-
-def load_data(file_path_or_url):
-    """
-    Load the observation sequence from a file or URL.
-
-    Parameters:
-    -----------
-    file_path_or_url: str
-        Path to the data file or URL
-
-    Returns:
-    --------
-    data: ndarray, shape (T,)
-        Sequence of observations as integers starting from 0
-    """
-    try:
-        if file_path_or_url.startswith('http://') or file_path_or_url.startswith('https://'):
-            response = requests.get(file_path_or_url)
-            response.raise_for_status()  # Ensure we notice bad responses
-            data = np.loadtxt(StringIO(response.text), dtype=int)
-        else:
-            data = np.loadtxt(file_path_or_url, dtype=int)
-        return data
-    except Exception as e:
-        raise ValueError(f"Error loading data: {e}")
-
+import pandas as pd
 class TestHMMWithSampleData(unittest.TestCase):
     def setUp(self):
         """Set up test data and parameters"""
         # Load sample data
         self.data_url = 'https://liangfgithub.github.io/Data/coding4_part2_data.txt'
-        self.data = load_data(self.data_url) - 1  # Convert to 0-based indexing
+        self.data = pd.read_table(header=None, sep=' ', filepath_or_buffer=self.data_url).values - 1
         
         # Initialize parameters
         self.mz = 2  # number of hidden states
