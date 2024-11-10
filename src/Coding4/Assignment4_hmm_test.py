@@ -290,17 +290,17 @@ def BW_onestep(data, w, A, B):
     
     # M-step: Update parameters
     # Update A
-    A_new = np.zeros_like(A.shape)
+    A_new = np.zeros_like(A)
     for i in range(mz):
         for j in range(mz):
             numerator = 0
             for t in range(T-1):
                 numerator += gammas[t,i,j]
             denominator = 0
-            for jprime in range(T-1):
+            for jprime in range(mz):
                 for t in range(T-1):
                     denominator += gammas[t,i,jprime]
-            A_new = numerator / denominator
+            A_new[i,j] = numerator / denominator
 
     
     # Update B
@@ -314,7 +314,8 @@ def BW_onestep(data, w, A, B):
                     for j in range(mz):
                         numerator += gammas[t,i,j]
                 for j in range(mz):
-                    numerator += gammas[t,i,j]
+                    denominator += gammas[t,i,j]
+            B_new[i,l] = numerator / denominator
 
                 
       
