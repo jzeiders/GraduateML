@@ -14,27 +14,21 @@ def forward_pass(data, w, A, B):
     
     Returns:
         alpha: Forward probabilities (T-by-mz)
-        c: Scaling factors (T,)
     """
     T = len(data)
     mz = len(w)
     alpha = np.zeros((T, mz))
-    c = np.zeros(T)
     
     # Initialize first time step
     alpha[0, :] = w * B[:, data[0]]
-    c[0] = 1.0 / np.sum(alpha[0, :])
-    alpha[0, :] *= c[0]
     
     # Forward recursion
     for t in range(1, T):
         alpha[t, :] = np.dot(alpha[t-1, :], A) * B[:, data[t]]
-        c[t] = 1.0 / np.sum(alpha[t, :])
-        alpha[t, :] *= c[t]
     
-    return alpha, c
+    return alpha
 
-def backward_pass(data, A, B, c):
+def backward_pass(data, A, B):
     """
     Compute backward probabilities beta(t,j)
     
@@ -52,12 +46,11 @@ def backward_pass(data, A, B, c):
     beta = np.zeros((T, mz))
     
     # Initialize last time step
-    beta[T-1, :] = c[T-1]
+    beta[-1, :] = 1
     
     # Backward recursion
     for t in range(T-2, -1, -1):
         beta[t, :] = np.dot(A, (B[:, data[t+1]] * beta[t+1, :]))
-        beta[t, :] *= c[t]
     
     return beta
 
@@ -80,8 +73,8 @@ def BW_onestep(data, w, A, B):
     mx = B.shape[1]
     
     # E-step: Compute forward and backward probabilities
-    alpha, c = forward_pass(data, w, A, B)
-    beta = backward_pass(data, A, B, c)
+    alpha = forward_pass(data, w, A, B)
+    beta = backward_pass(data, A, B)
     
     # Compute xi(t,i,j) = P(z_t=i, z_{t+1}=j | x_{1:T})
     xi = np.zeros((T-1, mz, mz))
@@ -136,8 +129,8 @@ def myBW(data, mz, mx, initial_params, itmax):
     
     for iteration in range(itmax):
         # Compute log likelihood
-        alpha, c = forward_pass(data, w, A, B)
-        current_ll = np.sum(np.log(1.0 / c))  # Equivalent to sum(log(sum(alpha)))
+        alpha = forward_pass(data, w, A, B)
+        current_ll = np.sum(np.log(alpha[:, -1]))
         
         
         # Update parameters
