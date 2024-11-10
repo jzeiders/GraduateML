@@ -1,6 +1,9 @@
+from io import StringIO
 import unittest
 import numpy as np
 
+from numpy.testing import assert_array_almost_equal, assert_array_less
+import requests
 
 
 def forward_pass(data, w, A, B):
@@ -446,14 +449,202 @@ class TestBaumWelch(unittest.TestCase):
         def compute_loglikelihood(data, w, A, B):
             # Implement forward algorithm and compute log-likelihood
             # This is left as an exercise
-            pass
+            alpha = forward_pass(data, w, A, B)
+        
+            # Log-likelihood is log of sum of last column of alpha
+            # Use log(sum(exp(log_alphas))) trick for numerical stability
+            return np.log(np.sum(alpha[-1]))
         
         # Compare log-likelihoods
-        # ll_old = compute_loglikelihood(self.data_simple, self.w, self.A, self.B)
-        # A_new, B_new = BW_onestep(self.data_simple, self.w, self.A, self.B)
-        # ll_new = compute_loglikelihood(self.data_simple, self.w, A_new, B_new)
-        # self.assertTrue(ll_new >= ll_old - 1e-10,
-        #                "Log-likelihood decreased after update")
+        ll_old = compute_loglikelihood(self.data_simple, self.w, self.A, self.B)
+        A_new, B_new = BW_onestep(self.data_simple, self.w, self.A, self.B)
+        ll_new = compute_loglikelihood(self.data_simple, self.w, A_new, B_new)
+        self.assertTrue(ll_new >= ll_old - 1e-10,
+                       "Log-likelihood decreased after update")
+
+def myBW(data, mz, mx, initial_params, itmax):
+    """
+    Main Baum-Welch algorithm with specified initial parameters
+    
+    Args:
+        data: T-by-1 observation sequence (1D array)
+        mz: Number of hidden states
+        mx: Number of observation symbols
+        initial_params: Dictionary containing initial parameters:
+            'w': Initial state distribution (mz,)
+            'A': Initial transition matrix (mz-by-mz)
+            'B': Initial emission matrix (mz-by-mx)
+        itmax: Maximum number of iterations
+    
+    Returns:
+        A_final: Final transition matrix
+        B_final: Final emission matrix
+        ll_final: Final log likelihood
+    """
+    # Ensure data is a 1D array
+    data = np.asarray(data).flatten()
+    
+    # Extract initial parameters
+    w = initial_params['w']
+    A = initial_params['A']
+    B = initial_params['B']
+    
+    
+    for iteration in range(itmax):
+        # Compute log likelihood
+        alpha = forward_pass(data, w, A, B)
+        current_ll = np.sum(np.log(alpha[:, -1]))
+        
+        
+        # Update parameters
+        A, B = BW_onestep(data, w, A, B)
+        
+        # Debugging: Print row sums to ensure they sum to 1
+        if (iteration + 1) % 10 == 0 or iteration == 0:
+            print(f"\nIteration {iteration + 1}")
+            print("Row sums of A:", A.sum(axis=1))
+            print("Row sums of B:", B.sum(axis=1))
+            print(f"Log-Likelihood: {current_ll}")
+    
+    return A, B, current_ll
+
+
+
+def load_data(file_path_or_url):
+    """
+    Load the observation sequence from a file or URL.
+
+    Parameters:
+    -----------
+    file_path_or_url: str
+        Path to the data file or URL
+
+    Returns:
+    --------
+    data: ndarray, shape (T,)
+        Sequence of observations as integers starting from 0
+    """
+    try:
+        if file_path_or_url.startswith('http://') or file_path_or_url.startswith('https://'):
+            response = requests.get(file_path_or_url)
+            response.raise_for_status()  # Ensure we notice bad responses
+            data = np.loadtxt(StringIO(response.text), dtype=int)
+        else:
+            data = np.loadtxt(file_path_or_url, dtype=int)
+        return data
+    except Exception as e:
+        raise ValueError(f"Error loading data: {e}")
+
+class TestHMMWithSampleData(unittest.TestCase):
+    def setUp(self):
+        """Set up test data and parameters"""
+        # Load sample data
+        self.data_url = 'https://liangfgithub.github.io/Data/coding4_part2_data.txt'
+        self.data = load_data(self.data_url) - 1  # Convert to 0-based indexing
+        
+        # Initialize parameters
+        self.mz = 2  # number of hidden states
+        self.mx = 3  # number of observation symbols
+        
+        # Initial parameters as specified in the main code
+        self.w = np.full(self.mz, 1/self.mz)
+        self.A = np.array([[0.5, 0.5],
+                          [0.5, 0.5]])
+        self.B = np.array([[1/9, 1/6, 3/6],
+                          [5/9, 2/6, 5/6]])
+        
+        # Expected results after 100 iterations (from given values)
+        self.expected_A = np.array([[0.49793938, 0.50206062],
+                                  [0.44883431, 0.55116569]])
+        self.expected_B = np.array([[0.22159897, 0.20266127, 0.57573976],
+                                  [0.34175148, 0.17866665, 0.47958186]])
+
+    def test_data_properties(self):
+        """Test properties of loaded data"""
+        # Check data range
+        self.assertTrue(np.all(self.data >= 0))
+        self.assertTrue(np.all(self.data < self.mx))
+        
+        # Check data is not empty
+        self.assertTrue(len(self.data) > 0)
+        
+        # Check data type
+        self.assertEqual(self.data.dtype, np.int64)
+
+    def test_forward_pass(self):
+        """Test forward pass with sample data"""
+        alpha = forward_pass(self.data, self.w, self.A, self.B)
+        
+        # Check shape
+        self.assertEqual(alpha.shape, (len(self.data), self.mz))
+        
+        # Check probabilities
+        self.assertTrue(np.all(alpha >= 0))
+        self.assertTrue(np.all(alpha <= 1))
+        
+        # Check first time step
+        expected_first = self.w * self.B[:, self.data[0]]
+        assert_array_almost_equal(alpha[0], expected_first)
+
+    def test_backward_pass(self):
+        """Test backward pass with sample data"""
+        beta = backward_pass(self.data, self.A, self.B)
+        
+        # Check shape
+        self.assertEqual(beta.shape, (len(self.data), self.mz))
+        
+        # Check probabilities
+        self.assertTrue(np.all(beta >= 0))
+        self.assertTrue(np.all(beta <= 1))
+        
+        # Check last time step initialization
+        assert_array_almost_equal(beta[-1], np.ones(self.mz))
+
+    def test_baum_welch_step(self):
+        """Test one step of Baum-Welch with sample data"""
+        A_new, B_new = BW_onestep(self.data, self.w, self.A, self.B)
+        
+        # Check shapes
+        self.assertEqual(A_new.shape, self.A.shape)
+        self.assertEqual(B_new.shape, self.B.shape)
+        
+        # Check probability constraints
+        assert_array_almost_equal(A_new.sum(axis=1), np.ones(self.mz))
+        assert_array_almost_equal(B_new.sum(axis=1), np.ones(self.mz))
+        
+        # Check ranges
+        self.assertTrue(np.all(A_new >= 0) and np.all(A_new <= 1))
+        self.assertTrue(np.all(B_new >= 0) and np.all(B_new <= 1))
+
+    def test_full_baum_welch(self):
+        """Test full Baum-Welch algorithm with sample data"""
+        initial_params = {'w': self.w, 'A': self.A, 'B': self.B}
+        A_final, B_final, ll_final = myBW(self.data, self.mz, self.mx, initial_params, itmax=100)
+        
+        # Check convergence to expected values (within tolerance)
+        assert_array_almost_equal(A_final, self.expected_A, decimal=2)
+        assert_array_almost_equal(B_final, self.expected_B, decimal=2)
+        
+        # Check log likelihood is finite and real
+        self.assertTrue(np.isfinite(ll_final))
+        self.assertTrue(np.isreal(ll_final))
+
+    def test_parameter_convergence(self):
+        """Test convergence of parameters over iterations"""
+        initial_params = {'w': self.w, 'A': self.A, 'B': self.B}
+        
+        # Run for different numbers of iterations
+        A20, B20, ll20 = myBW(self.data, self.mz, self.mx, initial_params, itmax=20)
+        A100, B100, ll100 = myBW(self.data, self.mz, self.mx, initial_params, itmax=100)
+        
+        # Check that likelihood improves
+        self.assertGreaterEqual(ll100, ll20)
+        
+        # Check that parameters stabilize
+        A_diff = np.abs(A100 - A20).max()
+        B_diff = np.abs(B100 - B20).max()
+        self.assertLess(A_diff, 0.1)  # Parameters should be relatively stable
+        self.assertLess(B_diff, 0.1)
 
 def run_backward_tests():
     """Run all backward pass tests with detailed output"""
@@ -478,11 +669,22 @@ def run_bw_tests():
     
     return result
 
+
+def run_integration_tests():
+    """Run all integration tests"""
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestHMMWithSampleData)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    return result
+
 if __name__ == '__main__':
     # Run all tests
     result = run_forward_tests()
     result = run_backward_tests()
     result = run_bw_tests()
+    
+    # Integration tests
+    result = run_integration_tests()
     
     # Print summary
     print("\nTest Summary:")
