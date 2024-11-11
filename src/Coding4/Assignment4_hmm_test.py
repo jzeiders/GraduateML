@@ -642,6 +642,85 @@ class TestHMMWithSampleData(unittest.TestCase):
         self.assertLess(B_diff, 0.1)
 
 
+def myViterbi(data, w, A, B):
+    """
+    Compute the most likely state sequence using the Viterbi algorithm
+    
+    Args:
+        data: T-by-1 observation sequence (1D array)
+        w: Initial state distribution (mz,)
+        A: Transition matrix (mz-by-mz)
+        B: Emission matrix (mz-by-mx)
+    
+    Returns:
+        path: Most likely state sequence
+        max_prob: Probability of the most likely path
+    """
+    # Ensure data is 1D array
+    data = np.asarray(data).flatten()
+    
+    T = len(data)        # Length of sequence
+    mz = len(w)          # Number of hidden states
+    
+    # Initialize tables
+    V = np.zeros((mz, T))  # Viterbi table
+    bp = np.zeros((mz, T), dtype=int)  # Backpointer table
+    
+    # Initialize first column of Viterbi table
+    V[:, 0] = np.log(w) + np.log(B[:, data[0]])
+    
+    # Forward pass: Fill tables
+    for t in range(1, T):
+        for j in range(mz):
+            # Calculate probabilities for all possible previous states
+            probs = V[:, t-1] + np.log(A[:, j]) + np.log(B[j, data[t]])
+            # Find maximum probability and its index
+            V[j, t] = np.max(probs)
+            bp[j, t] = np.argmax(probs)
+    
+    # Backward pass: Retrieve the most likely path
+    path = np.zeros(T, dtype=int)
+    # Find the most likely final state
+    path[-1] = np.argmax(V[:, -1])
+    max_prob = V[path[-1], -1]
+    
+    # Backtrack through the sequence
+    for t in range(T-2, -1, -1):
+        path[t] = bp[path[t+1], t+1]
+    
+    return path, max_prob
+
+class TestViterbi(unittest.TestCase):
+    def setUp(self):
+        """Set up test data and parameters"""
+        # Load sample data
+        self.data_url = "https://liangfgithub.github.io/Data/Coding4_part2_data.txt"
+        self.data = (
+            pd.read_table(header=None, sep=" ", filepath_or_buffer=self.data_url).values
+            - 1
+        )
+
+        # Initialize parameters
+        self.mz = 2  # number of hidden states
+        self.mx = 3  # number of observation symbols
+
+        # Initial parameters as specified in the main code
+        self.w = np.full(self.mz, 1 / self.mz)
+        self.A = np.array([[0.5, 0.5], [0.5, 0.5]])
+        self.B = np.array([[1 / 9, 1 / 6, 3 / 6], [5 / 9, 2 / 6, 5 / 6]])
+        
+
+        self.ans = pd.read_csv(header=None, sep="\s+", filepath_or_buffer="https://liangfgithub.github.io/Data/Coding4_part2_Z.txt").values
+
+    def test_viterbi(self):
+        a,b, _ = myBW(self.data, {"w": self.w, "A": self.A, "B": self.B}, 100)
+        result = myViterbi(self.data, self.w, a, b)
+        
+        # Check the most likely path
+        assert_array_almost_equal(result[0], self.ans.flatten())
+
+
+
 def run_backward_tests():
     """Run all backward pass tests with detailed output"""
     suite = unittest.TestLoader().loadTestsFromTestCase(TestHMMBackward)
@@ -675,18 +754,22 @@ def run_integration_tests():
     result = runner.run(suite)
     return result
 
+def run_viterbi_tests():
+    """Run all Viterbi tests with detailed output"""
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestViterbi)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    return result
+
 
 if __name__ == "__main__":
-    # Run all tests
-    result = run_forward_tests()
-    result = run_backward_tests()
-    result = run_bw_tests()
+    # # Run all tests
+    # result = run_forward_tests()
+    # result = run_backward_tests()
+    # result = run_bw_tests()
 
-    # Integration tests
-    result = run_integration_tests()
+    # # Integration tests
+    # result = run_integration_tests()
 
-    # Print summary
-    print("\nTest Summary:")
-    print(f"Tests run: {result.testsRun}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
+    result = run_viterbi_tests()
