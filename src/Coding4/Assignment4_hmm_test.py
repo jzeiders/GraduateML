@@ -3,7 +3,6 @@ import unittest
 import numpy as np
 
 from numpy.testing import assert_array_almost_equal, assert_array_less
-import requests
 
 
 def forward_pass(data, w, A, B):
@@ -28,7 +27,10 @@ def forward_pass(data, w, A, B):
 
     # Forward recursion
     for t in range(1, T):
-        alpha[t, :] = np.dot(alpha[t - 1, :], A) * B[:, data[t]]
+        # np.dot(alpha[t-1, :], A) gives a (mz,) shape
+        # B[:, data[t]] also gives a (mz,) shape
+        # We need to ensure the shapes align for element-wise multiplication
+        alpha[t, :] = np.dot(alpha[t - 1, :], A) * B[:, data[t]].T
 
     return alpha
 
@@ -299,8 +301,10 @@ def BW_onestep(data, w, A, B):
                 )
     gammas /= np.sum(gammas, axis=(1, 2))[:, np.newaxis, np.newaxis]
     assert np.abs(np.sum(gammas) - (T - 1)) < 1e-10
+    gammas_j = np.zeros((T, mz))
+    gammas_j[:-1] = np.sum(gammas, axis=2)
+    gammas_j[-1] = np.sum(gammas[-1], axis=0)
 
-    gammas_j = np.sum(gammas, axis=2) 
 
     # M-step: Update parameters
     # Update A
@@ -312,7 +316,7 @@ def BW_onestep(data, w, A, B):
                 numerator += gammas[t, i, j]
             denominator = 0
             for jprime in range(mz):
-                for t in range(1, T - 1):
+                for t in range( T - 1):
                     denominator += gammas[t, i, jprime]
             A_new[i, j] = numerator / denominator
 
@@ -535,7 +539,7 @@ class TestHMMWithSampleData(unittest.TestCase):
         self.data = (
             pd.read_table(header=None, sep=" ", filepath_or_buffer=self.data_url).values
             - 1
-        )
+        ).flatten()
 
         # Initialize parameters
         self.mz = 2  # number of hidden states
@@ -764,12 +768,12 @@ def run_viterbi_tests():
 
 
 if __name__ == "__main__":
-    # # Run all tests
-    # result = run_forward_tests()
-    # result = run_backward_tests()
-    # result = run_bw_tests()
+    # Run all tests
+    result = run_forward_tests()
+    result = run_backward_tests()
+    result = run_bw_tests()
 
-    # # Integration tests
-    # result = run_integration_tests()
+    # Integration tests
+    result = run_integration_tests()
 
-    result = run_viterbi_tests()
+    # result = run_viterbi_tests()
