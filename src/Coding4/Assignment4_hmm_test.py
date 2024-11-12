@@ -292,19 +292,15 @@ def BW_onestep(data, w, A, B):
     beta = backward_pass(data, A, B)
 
     # Compute xi(t,i,j) = P(z_t=i, z_{t+1}=j | x_{1:T})
-    gammas = np.zeros((T - 1, mz, mz))
+    xi = np.zeros((T - 1, mz, mz))
     for t in range(T - 1):
-        for i in range(mz):
-            for j in range(mz):
-                gammas[t, i, j] = (
-                    alpha[t, i] * A[i, j] * B[j, data[t + 1]] * beta[t + 1, j]
-                )
-        # Normalize per time step to prevent numerical issues
-        gammas[t] /= (np.sum(gammas[t]))
+        denominator = np.dot(np.dot(alpha[t, :], A) * B[:, data[t + 1]], beta[t + 1, :])
+        numerator = alpha[t, :, np.newaxis] * A * B[:, data[t + 1]] * beta[t + 1, :]
+        xi[t, :, :] = numerator / denominator
     
     # Compute state probabilities (gamma)
     gammas_j = np.zeros((T, mz))
-    gammas_j[:-1] = np.sum(gammas, axis=2)
+    gammas_j[:-1] = np.sum(xi, axis=2)
     # Fix for last time step - should use alpha and beta
     gammas_j[-1] = (alpha[-1] * beta[-1]) / np.sum(alpha[-1] * beta[-1])
 
@@ -313,8 +309,8 @@ def BW_onestep(data, w, A, B):
     A_new = np.zeros_like(A)
     for i in range(mz):
         for j in range(mz):
-            numerator = np.sum(gammas[:, i, j])
-            denominator = np.sum(gammas[:, i, :])
+            numerator = np.sum(xi[:, i, j])
+            denominator = np.sum(xi[:, i, :])
             A_new[i, j] = numerator / denominator
 
     # Update B (vectorized version)
@@ -541,9 +537,9 @@ class TestHMMWithSampleData(unittest.TestCase):
         self.mx = 3  # number of observation symbols
 
         # Initial parameters as specified in the main code
-        self.w = np.full(self.mz, 1 / self.mz)
+        self.w = np.array([0.5, 0.5])
         self.A = np.array([[0.5, 0.5], [0.5, 0.5]])
-        self.B = np.array([[1 / 9, 1 / 6, 3 / 6], [5 / 9, 2 / 6, 5 / 6]])
+        self.B = np.array([[1 / 9, 3 / 9, 5 / 9], [1 / 6, 2 / 6, 3 / 6]])
 
         # Expected results after 100 iterations (from given values)
         self.expected_A = np.array([[0.49793938, 0.50206062], [0.44883431, 0.55116569]])
@@ -616,7 +612,7 @@ class TestHMMWithSampleData(unittest.TestCase):
         )
 
         # Check convergence to expected values (within tolerance)
-        # assert_array_almost_equal(A_final, self.expected_A, decimal=2)
+        assert_array_almost_equal(A_final, self.expected_A, decimal=2)
         assert_array_almost_equal(B_final, self.expected_B, decimal=2)
 
         # Check log likelihood is finite and real
@@ -697,26 +693,28 @@ class TestViterbi(unittest.TestCase):
         self.data = (
             pd.read_table(header=None, sep=" ", filepath_or_buffer=self.data_url).values
             - 1
-        )
+        ).flatten()
 
         # Initialize parameters
         self.mz = 2  # number of hidden states
         self.mx = 3  # number of observation symbols
 
         # Initial parameters as specified in the main code
-        self.w = np.full(self.mz, 1 / self.mz)
+        self.w = np.array([0.5, 0.5])
         self.A = np.array([[0.5, 0.5], [0.5, 0.5]])
-        self.B = np.array([[1 / 9, 1 / 6, 3 / 6], [5 / 9, 2 / 6, 5 / 6]])
+        self.B = np.array([[1 / 9, 3 / 9, 5 / 9], [1 / 6, 2 / 6, 3 / 6]])
         
 
-        self.ans = pd.read_csv(header=None, sep="\s+", filepath_or_buffer="https://liangfgithub.github.io/Data/Coding4_part2_Z.txt").values
+        self.ans = pd.read_csv(header=None, sep="\s+", filepath_or_buffer="https://liangfgithub.github.io/Data/Coding4_part2_Z.txt").values - 1
+        self.ans = self.ans.flatten()
+        self.ans = self.ans[~np.isnan(self.ans)]
 
     def test_viterbi(self):
         a,b, _ = myBW(self.data, {"w": self.w, "A": self.A, "B": self.B}, 100)
         result = myViterbi(self.data, self.w, a, b)
         
         # Check the most likely path
-        assert_array_almost_equal(result[0], self.ans.flatten())
+        assert_array_almost_equal(result[0], self.ans)
 
 
 
@@ -771,4 +769,4 @@ if __name__ == "__main__":
     # Integration tests
     result = run_integration_tests()
 
-    # result = run_viterbi_tests()
+    result = run_viterbi_tests()
