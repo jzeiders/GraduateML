@@ -6,7 +6,7 @@ from typing import Dict, Set, Tuple
 import pandas as pd
 import numpy as np
 import warnings
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import ElasticNetCV, LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
 from sklearn.compose import ColumnTransformer
@@ -18,9 +18,9 @@ class GlobalSalesModel:
         self.setup_logging()
         
         # Define categorical and numeric features
-        self.categorical_features = ['WeekOfYear', 'DayOfWeek', 'HolidayCategory']
+        self.categorical_features = ['HolidayCategory']
         self.numeric_features = ['Year']
-        self.interaction_features = ['Store', 'Dept']
+        self.interaction_features = ['Store', 'Dept', 'WeekOfYear', 'DayOfWeek', 'HolidayCategory']
         
         
         # Create main preprocessor
@@ -29,13 +29,20 @@ class GlobalSalesModel:
                 ('num', 'passthrough', self.numeric_features),
                 ('cat', OneHotEncoder(handle_unknown='ignore'), 
                  self.categorical_features),
-                ('store_dept', Pipeline([
+                ('interactions', Pipeline([
                     ('onehot', OneHotEncoder(handle_unknown='ignore')),
                     ('interactions', PolynomialFeatures(degree=2, interaction_only=True, include_bias=False))
                 ]), self.interaction_features)
             ])
         
-        self.model = LinearRegression(fit_intercept=False)
+        self.model = ElasticNetCV(
+            l1_ratio=[0.1, 0.5, 0.7, 0.9, 0.95, 0.99, 1.0],
+            n_alphas=100,
+            cv=5,
+            random_state=42,
+            selection='random',
+            max_iter=1000
+        )
     
     def setup_logging(self):
         # Create logs directory if it doesn't exist
@@ -66,11 +73,11 @@ class GlobalSalesModel:
         feature_names.extend(cat_features)
         
         # Get store-dept interaction feature names
-        store_dept_encoder = self.preprocessor.named_transformers_['store_dept'].named_steps['onehot']
+        store_dept_encoder = self.preprocessor.named_transformers_['interactions'].named_steps['onehot']
         store_dept_features = store_dept_encoder.get_feature_names_out(self.interaction_features)
         
         # Get interaction terms
-        poly = self.preprocessor.named_transformers_['store_dept'].named_steps['interactions']
+        poly = self.preprocessor.named_transformers_['interactions'].named_steps['interactions']
         store_dept_interactions = poly.get_feature_names_out(store_dept_features)
         
         feature_names.extend(store_dept_interactions)
