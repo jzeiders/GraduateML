@@ -57,11 +57,12 @@ def svd_dept(train_df, n_comp=8):
         
         # Apply SVD if we have enough rows
         if X_centered.shape[0] > n_comp:
-            # Perform SVD
-            U, s, Vt = svd(X_centered, full_matrices=False)
+            X_reconstructed = TruncatedSVD(n_components=n_comp).fit_transform(X_centered)
+            # # Perform SVD
+            # U, s, Vt = svd(X_centered, full_matrices=False)
             
-            # Reconstruct using n_comp components
-            X_reconstructed = U[:, :n_comp] @ np.diag(s[:n_comp]) @ Vt[:n_comp, :]
+            # # Reconstruct using n_comp components
+            # X_reconstructed = U[:, :n_comp] @ np.diag(s[:n_comp]) @ Vt[:n_comp, :]
             
             # Add back the means
             X_reconstructed += store_means
@@ -93,8 +94,8 @@ def svd_dept(train_df, n_comp=8):
 def AddDateFeatures(df):
     Date = pd.to_datetime(df['Date'])
     df["Year"] = Date.dt.year
-    df["Year"] = df["Year"].astype(int) 
-    df["Week"] = Date.dt.isocalendar().week.astype(pd.CategoricalDtype(categories=range(1,53)))
+    df["Year"] = (df["Year"].astype(int) - 2010)**2
+    df["Week"] = Date.dt.isocalendar().week.astype(pd.CategoricalDtype(categories=range(1,52)))
 
     # Conver to dummies on the week
     df = pd.get_dummies(df, columns=["Week"])
@@ -124,7 +125,7 @@ def run_pipeline(train_path, test_path):
         store = row[1]['Store']
         
         data = train_df_svd[(train_df_svd['Dept'] == dept) & (train_df_svd['Store'] == store)]
-        model = Ridge(alpha=1.0)
+        model = LinearRegression()
         model.fit(data.drop(['Date', 'Weekly_Sales', "Store","Dept"], axis=1), data['Weekly_Sales'])
         models[(store, dept)] = model
         
