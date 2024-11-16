@@ -1,0 +1,67 @@
+2024-11-16 13:19:13,662 - 
+=== Training Model ===
+2024-11-16 13:19:13,662 - Training data shape: (164115, 5)
+2024-11-16 13:19:13,953 - 
+=== Model Interpretation ===
+2024-11-16 13:19:13,953 - 
+Top 20 Most Important Features:
+2024-11-16 13:19:13,953 - Store_14 Dept_92: 103053.5988 (Relative Importance: 0.4550%)
+2024-11-16 13:19:13,953 - Store_10 Dept_72: 93531.7970 (Relative Importance: 0.4129%)
+2024-11-16 13:19:13,953 - Store_2 Dept_92: 78357.0581 (Relative Importance: 0.3459%)
+2024-11-16 13:19:13,953 - Store_3 Dept_38: 74483.0699 (Relative Importance: 0.3288%)
+2024-11-16 13:19:13,954 - Store_14 Dept_95: 72151.5228 (Relative Importance: 0.3185%)
+2024-11-16 13:19:13,954 - Store_20 Dept_92: 71603.5593 (Relative Importance: 0.3161%)
+2024-11-16 13:19:13,954 - Store_20 Dept_95: 69474.6491 (Relative Importance: 0.3067%)
+2024-11-16 13:19:13,954 - Store_27 Dept_92: 67920.0612 (Relative Importance: 0.2999%)
+2024-11-16 13:19:13,954 - Store_13 Dept_92: 66403.8627 (Relative Importance: 0.2932%)
+2024-11-16 13:19:13,954 - Store_4 Dept_92: 63944.0849 (Relative Importance: 0.2823%)
+2024-11-16 13:19:13,954 - Store_2 Dept_95: 63461.8618 (Relative Importance: 0.2802%)
+2024-11-16 13:19:13,954 - Dept_92: 57749.1146 (Relative Importance: 0.2550%)
+2024-11-16 13:19:13,954 - Store_10 Dept_2: 57522.4625 (Relative Importance: 0.2540%)
+2024-11-16 13:19:13,954 - Store_3 Dept_92: -56088.6451 (Relative Importance: 0.2476%)
+2024-11-16 13:19:13,954 - Store_4 Dept_95: 54182.8420 (Relative Importance: 0.2392%)
+2024-11-16 13:19:13,954 - Dept_95: 53987.9553 (Relative Importance: 0.2384%)
+2024-11-16 13:19:13,954 - Store_5 Dept_92: -53959.9615 (Relative Importance: 0.2382%)
+2024-11-16 13:19:13,954 - Store_9 Dept_92: -53090.3965 (Relative Importance: 0.2344%)
+2024-11-16 13:19:13,954 - Store_14 Dept_90: 53075.8293 (Relative Importance: 0.2343%)
+2024-11-16 13:19:13,954 - Store_13 Dept_90: 51890.7288 (Relative Importance: 0.2291%)
+2024-11-16 13:19:13,955 - 
+Top 10 Store-Department Interactions:
+2024-11-16 13:19:13,957 - 
+Top 10 Temporal Features:
+2024-11-16 13:19:13,957 - WeekOfYear_47: 6516.3455 (Relative Importance: 0.0288%)
+2024-11-16 13:19:13,957 - WeekOfYear_50: 5147.9791 (Relative Importance: 0.0227%)
+2024-11-16 13:19:13,957 - WeekOfYear_51: 4299.9043 (Relative Importance: 0.0190%)
+2024-11-16 13:19:13,957 - WeekOfYear_49: 3064.5705 (Relative Importance: 0.0135%)
+2024-11-16 13:19:13,957 - WeekOfYear_4: -2461.0729 (Relative Importance: 0.0109%)
+2024-11-16 13:19:13,958 - WeekOfYear_52: -2124.9157 (Relative Importance: 0.0094%)
+2024-11-16 13:19:13,958 - WeekOfYear_3: -2083.6572 (Relative Importance: 0.0092%)
+2024-11-16 13:19:13,958 - WeekOfYear_2: -2078.4647 (Relative Importance: 0.0092%)
+2024-11-16 13:19:13,958 - WeekOfYear_38: -1804.3430 (Relative Importance: 0.0080%)
+2024-11-16 13:19:13,958 - WeekOfYear_39: -1489.2698 (Relative Importance: 0.0066%)
+2024-11-16 13:19:13,959 - 
+Holiday Effects:
+2024-11-16 13:19:13,959 - HolidayCategory_Christmas_is1daybefore: 4299.9043 (Relative Importance: 0.0190%)
+2024-11-16 13:19:13,959 - HolidayCategory_none: -2992.1104 (Relative Importance: 0.0132%)
+2024-11-16 13:19:13,959 - HolidayCategory_Super Bowl_is2daysbefore: -1281.7883 (Relative Importance: 0.0057%)
+2024-11-16 13:19:13,971 - 
+Detailed coefficient analysis saved to: /Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/global_model_results/logs/coefficient_analysis.csv
+2024-11-16 13:19:14,199 - 
+=== Prediction Analysis ===
+2024-11-16 13:19:14,199 - 
+Top 10 Store-Department Combinations by Average Predicted Sales:
+2024-11-16 13:19:14,200 -       Store  Dept           mean          std  count
+1029     14    92  189655.094589  2166.428646     56
+145       2    92  162114.730621  2166.428646     56
+718      10    72  159190.791409  2166.428646     56
+1477     20    92  157437.763926  2166.428646     56
+1032     14    95  154991.859320  2166.428646     56
+1480     20    95  151547.694446  2166.428646     56
+954      13    92  150385.299694  2166.428646     56
+1998     27    92  149927.751942  2166.428646     56
+292       4    92  148161.408086  2166.428646     56
+148       2    95  143458.375060  2166.428646     56
+2024-11-16 13:19:14,206 - 
+Detailed prediction analysis saved to: /Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/global_model_results/logs/prediction_analysis.csv
+2024-11-16 13:19:14,208 - 
+Model R² Score: 0.8914

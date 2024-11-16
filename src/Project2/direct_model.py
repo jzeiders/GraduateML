@@ -1,3 +1,5 @@
+from datetime import datetime
+import logging
 import os
 import sys
 from typing import Dict, Set, Tuple
@@ -9,6 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
 from sklearn.compose import ColumnTransformer
 warnings.filterwarnings("ignore")
+
 class GlobalSalesModel:
     def __init__(self):
         # Set up logging
@@ -19,17 +22,15 @@ class GlobalSalesModel:
         self.numeric_features = ['Year']
         self.interaction_features = ['Store', 'Dept']
         
-        # Initialize the preprocessors
-        self.store_dept_encoder = OneHotEncoder(sparse=False, handle_unknown='ignore')
         
         # Create main preprocessor
         self.preprocessor = ColumnTransformer(
             transformers=[
                 ('num', 'passthrough', self.numeric_features),
-                ('cat', OneHotEncoder(sparse=False, handle_unknown='ignore'), 
+                ('cat', OneHotEncoder(handle_unknown='ignore'), 
                  self.categorical_features),
                 ('store_dept', Pipeline([
-                    ('onehot', OneHotEncoder(sparse=False, handle_unknown='ignore')),
+                    ('onehot', OneHotEncoder(handle_unknown='ignore')),
                     ('interactions', PolynomialFeatures(degree=2, interaction_only=True, include_bias=False))
                 ]), self.interaction_features)
             ])
@@ -204,6 +205,71 @@ class GlobalSalesModel:
         X["Dept"] = X["Dept"].astype(str)
         
         return X
+
+def weighted_mae(y_true, y_pred, holiday_weights):
+    weights = np.where(holiday_weights, 5, 1)
+    return np.sum(weights * np.abs(y_true - y_pred)) / np.sum(weights)
+
+def process_fold(fold_path, test_labels):
+    print(f"Processing {fold_path}")
+
+    # Load training data
+    train_df = pd.read_csv(os.path.join(fold_path, "train.csv"))
+
+    # Define target and features
+    X_train = train_df
+    y_train = train_df["Weekly_Sales"]
+    
+    # Create and fit global model
+    model = GlobalSalesModel()
+    model.fit(X_train, y_train)
+
+    # Load test data
+    test_df = pd.read_csv(os.path.join(fold_path, "test.csv"))
+    X_test = test_df
+
+    # Make predictions using global model
+    predictions = model.predict(X_test)
+
+    # Prepare submission dataframe
+    submission_df = test_df[["Store", "Dept", "Date", "IsHoliday"]].copy()
+    submission_df["Weekly_Pred"] = predictions
+
+    # Calculate weighted MAE using the test labels
+    merged_df = pd.merge(
+        submission_df, test_labels, on=["Store", "Dept", "Date", "IsHoliday"]
+    )
+    merged_df["error"] = np.abs(merged_df["Weekly_Sales"] - merged_df["Weekly_Pred"])
+
+    if len(merged_df) != len(submission_df):
+        print(
+            f"Warning: Mismatch in number of samples. Predictions: {len(submission_df)}, Labels: {len(merged_df)}"
+        )
+
+    wmae = weighted_mae(
+        merged_df["Weekly_Sales"], merged_df["Weekly_Pred"], merged_df["IsHoliday"]
+    )
+
+    # Add additional metrics for store-dept performance
+    store_dept_metrics = merged_df.groupby(['Store', 'Dept']).agg({
+        'error': ['mean', 'std'],
+        'Weekly_Sales': 'count'
+    }).reset_index()
+    
+    store_dept_metrics.columns = ['Store', 'Dept', 'Mean_Error', 'Std_Error', 'Sample_Count']
+    
+    metrics_path = os.path.join(save_path, f"store_dept_metrics_{os.path.basename(fold_path)}.csv")
+    store_dept_metrics.to_csv(metrics_path, index=False)
+
+    return [
+        {
+            'fold': os.path.basename(fold_path),
+            'num_train_samples': len(train_df),
+            'num_test_samples': len(test_df),
+            'weighted_mae': wmae
+        },
+        merged_df
+    ]
 
 save_path = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/global_model_results"
 os.makedirs(save_path, exist_ok=True)
