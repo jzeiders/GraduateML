@@ -57,12 +57,11 @@ def svd_dept(train_df, n_comp=8):
         
         # Apply SVD if we have enough rows
         if X_centered.shape[0] > n_comp:
-            X_reconstructed = TruncatedSVD(n_components=n_comp).fit_transform(X_centered)
             # # Perform SVD
-            # U, s, Vt = svd(X_centered, full_matrices=False)
+            U, s, Vt = svd(X_centered, full_matrices=False)
             
             # # Reconstruct using n_comp components
-            # X_reconstructed = U[:, :n_comp] @ np.diag(s[:n_comp]) @ Vt[:n_comp, :]
+            X_reconstructed = U[:, :n_comp] @ np.diag(s[:n_comp]) @ Vt[:n_comp, :]
             
             # Add back the means
             X_reconstructed += store_means
@@ -132,6 +131,8 @@ def run_pipeline(train_path, test_path):
         
         test_data = test_df[(test_df['Dept'] == dept) & (test_df['Store'] == store)].copy()
         pred = model.predict(test_data.drop(['Date', 'IsHoliday', 'Store','Dept'], axis=1))
+        if (pred > 10e8).any():
+            print(f"Warning: Predicted value is too high for Store {store}, Dept {dept}")
         test_data['Weekly_Pred'] = pred
         preds = pd.concat([preds, test_data])
         
@@ -264,7 +265,7 @@ def main(fold_count=10):
     print(f"Aggregated results saved to {aggregated_results_path}")
 
 if __name__ == "__main__":
-    fold_count = 2
+    fold_count = 5
     if len(sys.argv) == 2:
         fold_count = int(sys.argv[1])
     main(fold_count)

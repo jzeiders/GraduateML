@@ -17,4 +17,6 @@ Dropping the year because everything is in the same year
 
 Breaking out different models for each store & department does pretty well.
 
-Got absolutely unhinged values with my cheater model with PCA. Adding Lasso Regression solved that quite well. Still need to add a quadratic term on year
+Got absolutely unhinged values with my cheater model with PCA. Adding Lasso Regression solved that quite well. Still need to add a quadratic term on year.
+
+Stuck on the unhinged values, trying to add a 
