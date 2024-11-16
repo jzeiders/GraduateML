@@ -4,20 +4,8 @@ from typing import Dict, Set, Tuple
 import pandas as pd
 import numpy as np
 import warnings
-import importlib.util
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import ElasticNetCV, ElasticNet, LinearRegression
-from xgboost import XGBRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.base import BaseEstimator, TransformerMixin
-
+from sklearn.linear_model import LinearRegression
 warnings.filterwarnings("ignore")
-
-# Custom Transformers for Feature Engineering
-
 
 def transform_input(df):
     X = df[["Store", "Dept"]]
@@ -51,57 +39,29 @@ def transform_input(df):
             X.loc[diff == -1, "HolidayCategory"] = f"{holiday_name}_is1daybefore"
             X.loc[diff == -2, "HolidayCategory"] = f"{holiday_name}_is2daysbefore"
     
-    X = pd.get_dummies(X, columns=["WeekOfYear", "DayOfWeek", "HolidayCategory"], drop_first=True)
+    # Convert Store and Dept to category type for one-hot encoding
+    X["Store"] = X["Store"].astype('category')
+    X["Dept"] = X["Dept"].astype('category')
     
-    print(X.info())
+    X = pd.get_dummies(X, columns=["Store", "Dept", "WeekOfYear", "DayOfWeek", "HolidayCategory"], drop_first=True)
+    
     return X
 
-
-class StoreDeptModels:
+class GlobalSalesModel:
     def __init__(self):
-        self.models: Dict[Tuple[int, int], LinearRegression] = {}
+        self.model = LinearRegression(fit_intercept=False)
         
     def fit(self, X: pd.DataFrame, y: pd.Series):
-        X = transform_input(X)
-        # Group data by Store and Dept
-        groups = X.groupby(['Store', 'Dept'])
-        
-        for (store, dept), group_data in groups:
-            # Create and fit model for this Store-Dept combination
-            model = LinearRegression(fit_intercept=False)
-            group_indices = group_data.index
-            
-            # Fit model on this store-dept combination
-            model.fit(X.loc[group_indices], y.loc[group_indices])
-            
-            # Store the model
-            self.models[(store, dept)] = model
+        X_transformed = transform_input(X)
+        self.model.fit(X_transformed, y)
             
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        predictions = np.zeros(len(X))
-        X = transform_input(X)
-        
-        
-        # Group test data by Store and Dept
-        groups = X.groupby(['Store', 'Dept'])
-        
-        for (store, dept), group_data in groups:
-            if (store, dept) in self.models:
-                group_indices = group_data.index
-                model = self.models[(store, dept)]
-                predictions[group_indices] = model.predict(X.loc[group_indices])
-            else:
-                print(f"Warning: No model found for Store {store}, Dept {dept}")
-                # Use mean of training data or another fallback strategy
-                
-        return predictions
+        X_transformed = transform_input(X)
+        return self.model.predict(X_transformed)
+
 def weighted_mae(y_true, y_pred, holiday_weights):
     weights = np.where(holiday_weights, 5, 1)
     return np.sum(weights * np.abs(y_true - y_pred)) / np.sum(weights)
-
-
-# Function to process each fold
-
 
 def process_fold(fold_path, test_labels):
     print(f"Processing {fold_path}")
@@ -113,15 +73,15 @@ def process_fold(fold_path, test_labels):
     X_train = train_df
     y_train = train_df["Weekly_Sales"]
     
-    # Create and fit store-department specific models
-    model = StoreDeptModels()
+    # Create and fit global model
+    model = GlobalSalesModel()
     model.fit(X_train, y_train)
 
     # Load test data
     test_df = pd.read_csv(os.path.join(fold_path, "test.csv"))
     X_test = test_df
 
-    # Make predictions using store-department specific models
+    # Make predictions using global model
     predictions = model.predict(X_test)
 
     # Prepare submission dataframe
@@ -159,15 +119,14 @@ def process_fold(fold_path, test_labels):
             'fold': os.path.basename(fold_path),
             'num_train_samples': len(train_df),
             'num_test_samples': len(test_df),
-            'weighted_mae': wmae,
-            'unique_store_dept_pairs': len(model.models),
+            'weighted_mae': wmae
         },
         merged_df
     ]
-# Main Function
 
-save_path = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/direct_model_results"
+save_path = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/global_model_results"
 os.makedirs(save_path, exist_ok=True)
+
 def main(fold_count=10):
     data_dir = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data"
 
@@ -194,8 +153,6 @@ def main(fold_count=10):
     results_df = pd.DataFrame(results)
     print("\nAggregated Results:")
     print(results_df)
-    
-    
 
     # Save aggregated results
     aggregated_results_path = os.path.join(save_path, "aggregated_results.csv")
@@ -208,9 +165,8 @@ def main(fold_count=10):
         df.to_csv(os.path.join(submission_dir, f"submission_{i}.csv"), index=False)
     print(f"Aggregated results saved to {aggregated_results_path}")
 
-
 if __name__ == "__main__":
-    fold_count=2
+    fold_count = 2
     if len(sys.argv) == 2:
         fold_count = int(sys.argv[1])
     main(fold_count)
