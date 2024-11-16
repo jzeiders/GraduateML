@@ -13,3 +13,6 @@ Possibly
 
 
 Dropping the year because everything is in the same year
+
+
+Breaking out different models for each store & department does pretty well.

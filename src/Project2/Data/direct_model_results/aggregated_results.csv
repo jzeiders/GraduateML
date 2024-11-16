@@ -1,0 +1,2 @@
+fold,num_train_samples,num_test_samples,weighted_mae,unique_store_dept_pairs
+fold_1,164115,26559,2289.8294376122312,3206

@@ -34,13 +34,13 @@ class DateFeaturesAdder(BaseEstimator, TransformerMixin):
                 X["Month"] = X["Date"].dt.month
             elif feature == "Year":
                 X["Year"] = X["Date"].dt.year
+                X["Year2"] = X["Year"] ** 2
             elif feature == "WeekOfYear":
                 X["WeekOfYear"] = X["Date"].dt.isocalendar().week.astype(int)
             elif feature == "DayOfWeek":
                 X["DayOfWeek"] = X["Date"].dt.dayofweek
             else:
                 raise ValueError(f"Unsupported date feature: {feature}")
-        X.drop("Date", axis=1, inplace=True)
         self.feature_names = X.columns
         return X
 
@@ -55,17 +55,20 @@ class HolidayProximityAdder(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         X = X.copy()
-        X["DaysUntilHoliday"] = X["Date"].apply(
+        DaysUntilHoliday = X["Date"].apply(
             lambda x: min(
                 [(h - x).days for h in self.holiday_dates_ if h >= x], default=0
             )
         )
-        X["DaysSinceHoliday"] = X["Date"].apply(
-            lambda x: min(
-                [(x - h).days for h in self.holiday_dates_ if h <= x], default=0
-            )
-        )
+        DaysUntilHoliday[DaysUntilHoliday < 0] = 0
+        print(DaysUntilHoliday)
+      
+        X["NearToHoliday"] = DaysUntilHoliday.apply(lambda x: 1 if x>=1 and x <= 5 else 0)
+        X["2DaysToHoliday"] = DaysUntilHoliday.apply(lambda x: 1 if x == 2 else 0)
+        self.feature_names = X.columns
         return X
+    def get_feature_names_out(self, feature_names_in=None):
+        return self.feature_names
 
 
 class InteractionFeaturesAdder(BaseEstimator, TransformerMixin):
@@ -75,7 +78,11 @@ class InteractionFeaturesAdder(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = X.copy()
         X["Store_Dept"] = X["Store"].astype(str) + "_" + X["Dept"].astype(str)
+        X["NearToHoliday_Dept"] = X["NearToHoliday"].astype(str) + "_" + X["Dept"].astype(str) + "_" + X["WeekOfYear"].astype(str)
+        self.feature_names = X.columns
         return X
+    def get_feature_names_out(self, feature_names_in=None):
+        return self.feature_names
 
 
 # Function to load configuration
@@ -182,7 +189,7 @@ def process_fold(fold_path, test_labels, config):
     model_config = config["model"]
 
     if model_config["type"] == "LinearRegression":
-        model = LinearRegression(**model_config["params"])
+        model = LinearRegression(fit_intercept=False)
     elif model_config["type"] == "ElasticNet":
         model = ElasticNet(**model_config["params"])
     elif model_config["type"] == "ElasticNetCV":

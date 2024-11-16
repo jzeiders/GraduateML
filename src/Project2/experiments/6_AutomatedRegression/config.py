@@ -4,7 +4,7 @@ config = {
     "feature_engineering": {
         "date_features": {
             "include": True,
-            "features": ['Year', 'WeekOfYear', "DayOfWeek"]  # Reduced to only year and week of year
+            "features": ['Year', 'WeekOfYear']  # Reduced to only year and week of year
         },
         "holiday_proximity": {
             "include": True
@@ -22,11 +22,11 @@ config = {
         "categorical_features": [
             'WeekOfYear',
             "IsHoliday",
+            "Store",
             "Dept",
             "Store_Dept",
             "NearToHoliday_Dept",
             'NearToHoliday',
-            'DayOfWeek'
         ]  # No categorical features needed
     },
 
