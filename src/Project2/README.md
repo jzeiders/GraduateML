@@ -10,3 +10,6 @@ I also want to clean up the column selection logic, it's a little redundant betw
 
 Current algorithm absolutely blows. Possibly an analysis issue though, it's actually so bad lol. I do think the actual main thing is to get the features right for rolling and lagging. I wonder if they actually taught anything about this?
 Possibly 
+
+
+Dropping the year because everything is in the same year

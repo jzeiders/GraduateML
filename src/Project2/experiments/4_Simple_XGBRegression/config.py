@@ -4,7 +4,7 @@ config = {
     "feature_engineering": {
         "date_features": {
             "include": True,
-            "features": ["month", "year", 'dayofyear']  # Features to extract from the Date column
+            "features": ["month", 'year', 'weekofyear', 'dayofweek']  # Features to extract from the Date column
         },
         "holiday_proximity": {
             "include": False  # Whether to include holiday proximity features
@@ -15,15 +15,17 @@ config = {
     },
 
     "preprocessing": {
-        "numerical_features": [],
+        "numerical_features": [
+            'Year',
+        ],
         "categorical_features": [
             "Store",
             "Dept",
             "Store_Dept",
             "IsHoliday", 
             "Month",
-            'DayOfYear', 
-            "Year",
+            'WeekOfYear',
+            'DayOfWeek',
         ]
     },
 
