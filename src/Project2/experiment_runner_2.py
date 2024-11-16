@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import ElasticNetCV, ElasticNet
 from xgboost import XGBRegressor
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -27,15 +27,22 @@ class DateFeaturesAdder(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = X.copy()
         X["Date"] = pd.to_datetime(X["Date"])
-        if "year" in self.features:
-            X["Year"] = X["Date"].dt.year
-        if "month" in self.features:
-            X["Month"] = X["Date"].dt.month
-        if "weekofyear" in self.features:
-            X["WeekOfYear"] = X["Date"].dt.isocalendar().week.astype(int)
-        if "dayofweek" in self.features:
-            X["DayOfWeek"] = X["Date"].dt.dayofweek
+        for feature in self.features:
+            if feature == "year":
+                X["Year"] = X["Date"].dt.year
+            elif feature == "month":
+                X["Month"] = X["Date"].dt.month
+            elif feature == "dayofyear":
+                X["DayOfYear"] = X["Date"].dt.dayofyear
+            elif feature == "weekofyear":
+                X["WeekOfYear"] = X["Date"].dt.isocalendar().week.astype(int)
+            elif feature == "dayofweek":
+                X["DayOfWeek"] = X["Date"].dt.dayofweek
+            else: 
+                raise ValueError(f"Unsupported date feature: {feature}")
+        X.drop("Date", axis=1, inplace=True) 
         return X
+        
 
 class HolidayProximityAdder(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
@@ -60,19 +67,6 @@ class InteractionFeaturesAdder(BaseEstimator, TransformerMixin):
         X = X.copy()
         X["Store_Dept"] = X["Store"].astype(str) + "_" + X["Dept"].astype(str)
         return X
-
-class FeatureSelector(BaseEstimator, TransformerMixin):
-    """
-    Selects specific columns from the DataFrame.
-    """
-    def __init__(self, columns):
-        self.columns = columns
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        return X[self.columns]
 
 # Function to load configuration
 
@@ -127,7 +121,8 @@ def create_pipeline(model, config):
 
     categorical_transformer = Pipeline(
         steps=[
-            ("imputer", SimpleImputer(strategy="constant", fill_value="Missing")),
+            ("imputer", SimpleImputer(strategy="constant")),
+            ('encoder', OneHotEncoder(handle_unknown='ignore')),
         ]
     )
 
@@ -190,7 +185,7 @@ def process_fold(fold_path, test_labels, config):
     # Create and train pipeline
     pipeline = create_pipeline(model, config)
     pipeline.fit(X_train, y_train)
-
+    
     # Load test data
     test_df = pd.read_csv(os.path.join(fold_path, "test.csv"))
 
@@ -217,21 +212,22 @@ def process_fold(fold_path, test_labels, config):
         merged_df["Weekly_Sales"], merged_df["Weekly_Pred"], merged_df["IsHoliday"]
     )
 
-    return {
+    return [{
         "fold": os.path.basename(fold_path),
         "num_train_samples": len(train_df),
         "num_test_samples": len(test_df),
         "weighted_mae": wmae,
-    }
+    }, submission_df]
 
 
 # Main Function
 
-def main(config_path):
+def main(config_path, fold_count=10):
     config = load_config(config_path)
     data_dir = "data"
 
     results = []
+    dfs = []
 
     # Load the test labels once
     test_labels_path = os.path.join(data_dir, "test_with_label.csv")
@@ -240,11 +236,14 @@ def main(config_path):
 
     test_labels = pd.read_csv(test_labels_path)
 
-    for fold in sorted(os.listdir(data_dir)):
+    folds = sorted(os.listdir(data_dir))[:fold_count + 1]
+
+    for fold in folds:
         fold_path = os.path.join(data_dir, fold)
         if os.path.isdir(fold_path) and fold.startswith("fold_"):
-            result = process_fold(fold_path, test_labels, config)
+            result, df = process_fold(fold_path, test_labels, config)
             results.append(result)
+            dfs.append(df)
 
     # Aggregate results into a DataFrame
     results_df = pd.DataFrame(results)
@@ -254,11 +253,18 @@ def main(config_path):
     # Save aggregated results
     aggregated_results_path = os.path.join(config_path, "aggregated_results.csv")
     results_df.to_csv(aggregated_results_path, index=False)
+    
+    # Save submission files
+    submission_dir = os.path.join(config_path, "submissions")
+    os.makedirs(submission_dir, exist_ok=True)
+    for i, df in enumerate(dfs):
+        df.to_csv(os.path.join(submission_dir, f"submission_{i}.csv"), index=False)
     print(f"Aggregated results saved to {aggregated_results_path}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <config_path>")
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: python script.py <config_path> <folds>")
     else:
         config_path = sys.argv[1]
-        main(config_path)
+        fold_count = int(sys.argv[2]) if len(sys.argv) == 3 else 10
+        main(config_path, fold_count)
