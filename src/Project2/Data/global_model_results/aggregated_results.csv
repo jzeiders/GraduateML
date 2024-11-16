@@ -1,0 +1,2 @@
+fold,num_train_samples,num_test_samples,weighted_mae
+fold_1,164115,26559,2437.7245288553545

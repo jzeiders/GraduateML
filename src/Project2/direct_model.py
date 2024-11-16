@@ -5,59 +5,89 @@ import pandas as pd
 import numpy as np
 import warnings
 from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
+from sklearn.compose import ColumnTransformer
 warnings.filterwarnings("ignore")
-
-def transform_input(df):
-    X = df[["Store", "Dept"]]
-    Dates = pd.to_datetime(df["Date"])
-    
-    X["Year"] = Dates.dt.year.astype(int)
-    X["WeekOfYear"] = Dates.dt.isocalendar().week.astype('category')
-    X["DayOfWeek"] = Dates.dt.dayofweek.astype('category')
-    
-    # Define holiday dates
-    holidays = {
-        "Super Bowl": ["2010-02-07", "2011-02-06", "2012-02-05", "2013-02-03"],
-        "Labor Day": ["2010-09-06", "2011-09-05", "2012-09-03", "2013-09-02"],
-        "Thanksgiving": ["2010-11-25", "2011-11-24", "2012-11-22", "2013-11-28"],
-        "Christmas": ["2010-12-25", "2011-12-25", "2012-12-25", "2013-12-25"]
-    }
-    
-    # Convert holiday dates to datetime
-    holidays = {key: pd.to_datetime(value) for key, value in holidays.items()}
-    
-    # Initialize holiday category column
-    X["HolidayCategory"] = "none"
-    
-    for holiday_name, dates in holidays.items():
-        for date in dates:
-            # Calculate difference in days
-            diff = (Dates - date).dt.days
-            
-            # Assign categories
-            X.loc[diff == 0, "HolidayCategory"] = f"{holiday_name}_is"
-            X.loc[diff == -1, "HolidayCategory"] = f"{holiday_name}_is1daybefore"
-            X.loc[diff == -2, "HolidayCategory"] = f"{holiday_name}_is2daysbefore"
-    
-    # Convert Store and Dept to category type for one-hot encoding
-    X["Store"] = X["Store"].astype('category')
-    X["Dept"] = X["Dept"].astype('category')
-    
-    X = pd.get_dummies(X, columns=["Store", "Dept", "WeekOfYear", "DayOfWeek", "HolidayCategory"], drop_first=True)
-    
-    return X
 
 class GlobalSalesModel:
     def __init__(self):
-        self.model = LinearRegression(fit_intercept=False)
+            # Define categorical and numeric features
+            self.categorical_features = ['WeekOfYear', 'DayOfWeek', 'HolidayCategory']
+            self.numeric_features = ['Year']
+            self.interaction_features = ['Store', 'Dept']
+            
+            # Create main preprocessor
+            self.preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', 'passthrough', self.numeric_features),
+                    ('cat', OneHotEncoder(handle_unknown='ignore'), 
+                     self.categorical_features),
+                    ('store_dept', Pipeline([
+                        ('onehot', OneHotEncoder(handle_unknown='ignore')),
+                        ('interactions', PolynomialFeatures(degree=2, interaction_only=True, include_bias=False))
+                    ]), self.interaction_features)
+                ])
+            
+            self.model = LinearRegression(fit_intercept=False)
         
+    def transform_input(self, df):
+        # Create base features DataFrame
+        X = df[["Store", "Dept"]].copy()
+        Dates = pd.to_datetime(df["Date"])
+        
+        # Add temporal features
+        X["Year"] = Dates.dt.year.astype(int)
+        X["WeekOfYear"] = Dates.dt.isocalendar().week.astype(str)
+        X["DayOfWeek"] = Dates.dt.dayofweek.astype(str)
+        
+        # Define holiday dates
+        holidays = {
+            "Super Bowl": ["2010-02-07", "2011-02-06", "2012-02-05", "2013-02-03"],
+            "Labor Day": ["2010-09-06", "2011-09-05", "2012-09-03", "2013-09-02"],
+            "Thanksgiving": ["2010-11-25", "2011-11-24", "2012-11-22", "2013-11-28"],
+            "Christmas": ["2010-12-25", "2011-12-25", "2012-12-25", "2013-12-25"]
+        }
+        
+        # Convert holiday dates to datetime
+        holidays = {key: pd.to_datetime(value) for key, value in holidays.items()}
+        
+        # Initialize holiday category column
+        X["HolidayCategory"] = "none"
+        
+        # Add holiday features
+        for holiday_name, dates in holidays.items():
+            for date in dates:
+                diff = (Dates - date).dt.days
+                X.loc[diff == 0, "HolidayCategory"] = f"{holiday_name}_is"
+                X.loc[diff == -1, "HolidayCategory"] = f"{holiday_name}_is1daybefore"
+                X.loc[diff == -2, "HolidayCategory"] = f"{holiday_name}_is2daysbefore"
+        
+        # Convert Store and Dept to string to ensure proper categorical handling
+        X["Store"] = X["Store"].astype(str)
+        X["Dept"] = X["Dept"].astype(str)
+        
+        return X
+            
     def fit(self, X: pd.DataFrame, y: pd.Series):
-        X_transformed = transform_input(X)
-        self.model.fit(X_transformed, y)
+        # Transform the input data
+        X_transformed = self.transform_input(X)
+        
+        # Fit the preprocessor and transform the data
+        X_processed = self.preprocessor.fit_transform(X_transformed)
+        
+        # Fit the model
+        self.model.fit(X_processed, y)
             
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        X_transformed = transform_input(X)
-        return self.model.predict(X_transformed)
+        # Transform the input data
+        X_transformed = self.transform_input(X)
+        
+        # Transform using the fitted preprocessor
+        X_processed = self.preprocessor.transform(X_transformed)
+        
+        # Make predictions
+        return self.model.predict(X_processed)
 
 def weighted_mae(y_true, y_pred, holiday_weights):
     weights = np.where(holiday_weights, 5, 1)
