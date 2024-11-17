@@ -19,4 +19,9 @@ Breaking out different models for each store & department does pretty well.
 
 Got absolutely unhinged values with my cheater model with PCA. Adding Lasso Regression solved that quite well. Still need to add a quadratic term on year.
 
-Stuck on the unhinged values, trying to add a 
+Stuck on the unhinged values, trying to add a break point to see why that is. Maybe I'm fitting on no-data? Need to understand that behavior?
+
+So the SVD issue is about that i'm never skipping anything.
+
+In a much better spot! Got the WMAE down to  1598.460832 by setting negative predictions to zero. Going 
+to try scaling to the mean for the dept. Zero was better than mean over 2 or mean for default.

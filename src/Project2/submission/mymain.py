@@ -1,5 +1,3 @@
-import os
-import time
 import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.decomposition import PCA
@@ -126,101 +124,12 @@ def run_pipeline(train_path, test_path):
     return predictions 
 
 
+def main():
+    train_path = 'train.csv'
+    test_path = 'test.csv'
 
-def weighted_mae(y_true, y_pred, holiday_weights):
-    weights = np.where(holiday_weights, 5, 1)
-    return np.sum(weights * np.abs(y_true - y_pred)) / np.sum(weights)
+    predictions = run_pipeline(train_path, test_path)
+    predictions.to_csv('mypred.csv', index=False)
 
-def process_fold(fold_path, test_labels):
-    print(f"Processing {fold_path}")
-
-    # Load training data
-    train_df = pd.read_csv(os.path.join(fold_path, "train.csv"))
-    test_df = pd.read_csv(os.path.join(fold_path, "test.csv"))
-
-
-    submission_df = run_pipeline(os.path.join(fold_path, "train.csv"),os.path.join(fold_path, "test.csv"))
-        # Write the model coefficients to a file
-    
-    # Calculate weighted MAE using the test labels
-    merged_df = pd.merge(
-        submission_df, test_labels, on=["Store", "Dept", "Date", "IsHoliday"]
-    )
-    merged_df["error"] = np.abs(merged_df["Weekly_Sales"] - merged_df["Weekly_Pred"])
-
-    if len(merged_df) != len(submission_df):
-        print(
-            f"Warning: Mismatch in number of samples. Predictions: {len(submission_df)}, Labels: {len(merged_df)}"
-        )
-
-    wmae = weighted_mae(
-        merged_df["Weekly_Sales"], merged_df["Weekly_Pred"], merged_df["IsHoliday"]
-    )
-
-    # Add additional metrics for store-dept performance
-    store_dept_metrics = merged_df.groupby(['Store', 'Dept']).agg({
-        'error': ['mean', 'std'],
-        'Weekly_Sales': 'count'
-    }).reset_index()
-    
-    store_dept_metrics.columns = ['Store', 'Dept', 'Mean_Error', 'Std_Error', 'Sample_Count']
-    
-    metrics_path = os.path.join(save_path, f"store_dept_metrics_{os.path.basename(fold_path)}.csv")
-    store_dept_metrics.to_csv(metrics_path, index=False)
-
-    return [
-        {
-            'fold': os.path.basename(fold_path),
-            'num_train_samples': len(train_df),
-            'num_test_samples': len(test_df),
-            'weighted_mae': wmae
-        },
-        merged_df
-    ]
-
-save_path = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data/global_model_results"
-os.makedirs(save_path, exist_ok=True)
-
-def main(fold_count=10):
-    data_dir = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project2/data"
-
-    results = []
-
-    # Load the test labels once
-    test_labels_path = os.path.join(data_dir, "test_with_label.csv")
-    if not os.path.exists(test_labels_path):
-        raise FileNotFoundError(f"test_with_label.csv not found at {test_labels_path}")
-
-    test_labels = pd.read_csv(test_labels_path)
-
-    folds = sorted(os.listdir(data_dir))[: fold_count + 1]
-    
-    # Save submission files
-    submission_dir = os.path.join(save_path, "submissions")
-    os.makedirs(submission_dir, exist_ok=True)
-
-    for fold in folds:
-        fold_path = os.path.join(data_dir, fold)
-        if os.path.isdir(fold_path) and fold.startswith("fold_"):
-            start_time = time.perf_counter()
-            result, df = process_fold(fold_path, test_labels)
-            train_time = time.perf_counter() - start_time
-            print(f"{fold} model trained in {train_time:.2f} seconds.")
-            results.append(result)
-            df.to_csv(os.path.join(submission_dir, f"submission_{fold}.csv"), index=False)
-
-    # Aggregate results into a DataFrame
-    results_df = pd.DataFrame(results)
-    print("\nAggregated Results:")
-    print(results_df)
-    print(results_df["weighted_mae"].describe())
-
-    # Save aggregated results
-    aggregated_results_path = os.path.join(save_path, "aggregated_results.csv")
-    results_df.to_csv(aggregated_results_path, index=False)
-       
-    print(f"Aggregated results saved to {aggregated_results_path}")
-
-if __name__ == "__main__":
-    fold_count = 100
-    main(fold_count)
+if __name__ == '__main__':
+    main()
