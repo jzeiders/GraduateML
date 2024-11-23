@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { dirname, join } from "node:path";
+import path, { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { defineConfig } from 'vite';
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -11,7 +11,7 @@ const PYODIDE_EXCLUDE = [
   "!**/node_modules",
 ];
 
-export function viteStaticCopyPyodide() {
+function viteStaticCopyPyodide() {
   const pyodideDir = dirname(fileURLToPath(import.meta.resolve("pyodide")));
   return viteStaticCopy({
     targets: [
@@ -31,6 +31,11 @@ export default defineConfig({
       // Allow serving files from node_modules
       allow: ['..', 'node_modules']
     }
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
 
   plugins: [react(), viteStaticCopyPyodide()],
