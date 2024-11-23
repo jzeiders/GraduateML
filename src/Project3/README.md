@@ -80,4 +80,6 @@ Basics of analysis are going well, saving the results in the results folder.
 
 TODO:
 1. Clean up the visualization
-2. 
+2. Plot the trigrams? 
+3. Check the visualizations with and without the sentence level check
+4. Figure out how to uplaod things.
