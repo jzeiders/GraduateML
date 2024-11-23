@@ -1,3 +1,6 @@
 .direnv
 .jupyter
 .pycache
+
+src/Project3/data
+bert_cache
