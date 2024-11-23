@@ -209,7 +209,7 @@ def compute_bert_embeddings(df: pl.DataFrame, embedder: BERTEmbedder, batch_size
     for idx, text in enumerate(df['review']):
         embedding = embedder.get_embedding(text)
         bert_embeddings.append(embedding)
-        if (idx + 1) % 100 == 0:
+        if (idx + 1) % 1000 == 0:
             print(f"Computed BERT embeddings for {idx + 1} samples.")
     out = np.vstack(bert_embeddings)
     assert out.shape == (len(df), BERT_DIM), f"Expected shape: {(len(df), BERT_DIM)}, Got: {out.shape}"
@@ -360,7 +360,7 @@ nltk.download('punkt')
 nltk.download('punkt_tab')
 
 
-def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, max_sentence_length=100):
+def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, path):
     """
     Performs composite interpretability analysis by assessing the importance of each word in the text
     based on its impact at sentence, trigram, and word levels.
@@ -374,7 +374,7 @@ def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, ma
     - Saves a CSV table and an HTML file with highlighted text in the 'results' directory.
     """
     # Ensure results directory exists
-    results_dir = 'results'
+    results_dir = os.path.join('results',path)
     os.makedirs(results_dir, exist_ok=True)
     
     # Initialize data structures
@@ -468,7 +468,6 @@ def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, ma
     for word, impacts in word_impacts.items():
         average_impact = sum(impacts) / len(impacts)
         aggregated_impacts[word] = average_impact
-        print(f"Word '{word}': Average Impact = {average_impact:.4f}")
 
     # Step 7: Create a DataFrame for results
     results_df = pd.DataFrame({
@@ -636,7 +635,8 @@ def main():
             
     print(f"Error Rate on Classification: {errors / 1000}")
  
-    interpreability_analysis(test_data['review'][0], sentiment_classifier)
+    for i in range(0,5):
+        interpreability_analysis(test_data['review'][i], sentiment_classifier, str(i))
 
 if __name__ == "__main__":
     main()

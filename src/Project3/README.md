@@ -74,4 +74,10 @@ Ok so things seems a little better with sentence level analysis. Getting a lot m
 
 Then I am setting it up to use word, trigram, & sentence level analysis to produce the relative importance of each word. 
 
-BERT is wrong because it always giving zero.
+BERT is wrong because it always giving zero. Replacing the direct matrix transformation with predictions got things corrected. Not sure what I was doing wrong? I should have been able to directly multiply by the weights? Maybe I wasn't actually saving the weights correctly.
+
+Basics of analysis are going well, saving the results in the results folder.
+
+TODO:
+1. Clean up the visualization
+2. 
