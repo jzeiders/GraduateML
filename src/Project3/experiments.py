@@ -6,6 +6,7 @@ import joblib
 import os
 import argparse
 import pandas as pd
+import time
 
 
 def load_data(train_path, test_path, test_y_path):
@@ -38,19 +39,47 @@ def preprocess_data(train, test, test_y):
     
     return X_train, y_train, X_test, y_test
 
-def perform_grid_search(X_train, y_train):
+def train_model(X_train, y_train):
+    """
+    Train a logistic regression model with optimized parameters.
+    Returns the model and training time.
+    """
+    start_time = time.time()
     model = LogisticRegression(
-        solver='liblinear',  # Use liblinear for small datasets, change to 'saga' for large datasets
+        solver='liblinear',
+        max_iter=1000,
+        C=10,  # Based on previous grid search results
+        random_state=42
+    )
+    
+    model.fit(X_train, y_train)
+    training_time = time.time() - start_time
+    return model, training_time
+
+def evaluate_model(model, X_test, y_test):
+    """
+    Predict probabilities on the test set and calculate AUC.
+    Also measures inference time.
+    """
+    start_time = time.time()
+    y_pred_prob = model.predict_proba(X_test)[:, 1]
+    inference_time = time.time() - start_time
+    
+    auc = roc_auc_score(y_test, y_pred_prob)
+    return auc, y_pred_prob, inference_time
+
+def perform_grid_search(X_train, y_train):
+    start_time = time.time()
+    model = LogisticRegression(
+        solver='liblinear',
         max_iter=1000,
         random_state=42
     )
     
-    # Grid of alpha (inverse of regularization strength)
     param_grid = {
-        'C': [0.01, 0.1, 1, 10, 100]  # C is the inverse of alpha in Logistic Regression
+        'C': [0.01, 0.1, 1, 10, 100]
     }
     
-    # Perform grid search with 5-fold cross-validation
     grid_search = GridSearchCV(
         estimator=model,
         param_grid=param_grid,
@@ -62,13 +91,15 @@ def perform_grid_search(X_train, y_train):
     
     print("Starting GridSearch for Logistic Regression...")
     grid_search.fit(X_train, y_train)
+    grid_search_time = time.time() - start_time
     
     print("\nBest parameters found:")
     for param, value in grid_search.best_params_.items():
         print(f"{param}: {value}")
     print(f"Best CV score: {grid_search.best_score_:.6f}")
+    print(f"Grid search time: {grid_search_time:.2f} seconds")
     
-    return grid_search.best_estimator_, grid_search.best_params_, grid_search.cv_results_
+    return grid_search.best_estimator_, grid_search.best_params_, grid_search.cv_results_, grid_search_time
 
 def save_grid_search_results(cv_results, split_number, save_dir='grid_search_results/'):
     """
@@ -81,14 +112,6 @@ def save_grid_search_results(cv_results, split_number, save_dir='grid_search_res
     results_path = os.path.join(save_dir, f'grid_search_results_split{split_number}.csv')
     results_df.to_csv(results_path, index=False)
     print(f"Grid search results saved to {results_path}")
-
-def evaluate_model(model, X_test, y_test):
-    """
-    Predict probabilities on the test set and calculate AUC.
-    """
-    y_pred_prob = model.predict_proba(X_test)[:, 1]
-    auc = roc_auc_score(y_test, y_pred_prob)
-    return auc, y_pred_prob
 
 def save_model(model, split_number, save_dir='models/'):
     """
@@ -132,12 +155,16 @@ def main():
     args = parser.parse_args()
     
     best_params_all_splits = {}
+    total_training_time = 0
+    total_inference_time = 0
+    num_splits = 0
     
     for split_folder in os.listdir(data_dir):
         if not split_folder.startswith('split'):
             continue
             
         print(f"\nProcessing {split_folder}...")
+        num_splits += 1
         
         train_path = os.path.join(data_dir, split_folder, 'train.csv')
         test_path = os.path.join(data_dir, split_folder, 'test.csv')
@@ -146,20 +173,23 @@ def main():
         train, test, test_y = load_data(train_path, test_path, test_y_path)
         X_train, y_train, X_test, y_test = preprocess_data(train, test, test_y)
         
+        if args.grid_search:
+            best_model, best_params, cv_results, grid_time = perform_grid_search(X_train, y_train)
+            best_params_all_splits[split_folder] = best_params
+            print(f"Grid search time for {split_folder}: {grid_time:.2f} seconds")
+            save_grid_search_results(cv_results, split_folder)
+        else:
             # Use default parameters if not performing grid search
-        best_model = LogisticRegression(
-            solver='liblinear',  # Use liblinear for small datasets, change to 'saga' for large datasets
-            max_iter=1000,
-            C=10,
-            random_state=42
-        )
-    
-        best_model.fit(X_train, y_train)
+            best_model, training_time = train_model(X_train, y_train)
+            total_training_time += training_time
+            print(f"Training time for {split_folder}: {training_time:.2f} seconds")
         
         # Evaluate model
         print("\nEvaluating model...")
-        auc, y_pred_prob = evaluate_model(best_model, X_test, y_test)
+        auc, y_pred_prob, inference_time = evaluate_model(best_model, X_test, y_test)
+        total_inference_time += inference_time
         print(f"AUC for {split_folder}: {auc:.6f}")
+        print(f"Inference time for {split_folder}: {inference_time:.2f} seconds")
         
         # Save the model
         save_model(best_model, split_folder, os.path.join(data_dir, 'models'))
@@ -170,5 +200,13 @@ def main():
         else:
             print(f"✅ AUC meets the threshold.")
     
+    # Print average timing statistics
+    if num_splits > 0:
+        print("\nTiming Statistics:")
+        print(f"Average training time per split: {total_training_time/num_splits:.2f} seconds")
+        print(f"Average inference time per split: {total_inference_time/num_splits:.2f} seconds")
+        print(f"Total training time: {total_training_time:.2f} seconds")
+        print(f"Total inference time: {total_inference_time:.2f} seconds")
+
 if __name__ == "__main__":
     main()

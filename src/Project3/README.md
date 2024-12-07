@@ -83,3 +83,7 @@ TODO:
 2. Plot the trigrams? 
 3. Check the visualizations with and without the sentence level check
 4. Figure out how to uplaod things.
+
+
+For the visualization:
+- trying the pre-built lime library

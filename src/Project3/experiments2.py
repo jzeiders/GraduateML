@@ -27,6 +27,7 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from collections import defaultdict
 import re
 import html
+from lime.lime_text import LimeTextExplainer
 
 
 # -----------------------------
@@ -567,6 +568,157 @@ def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, pa
     plt.savefig(image_path)
     plt.close()
     print(f"Color-coded bar chart saved to '{image_path}'.")
+
+def interpretability_analysis_v2(text, sentiment_classifier: SentimentClassifier, path):
+    """
+    Performs interpretability analysis using LIME to explain the model's predictions.
+    
+    Parameters:
+    - text: The original text (review) as a string
+    - sentiment_classifier: An instance of SentimentClassifier
+    - path: Path for saving results
+    """
+    # Ensure results directory exists
+    results_dir = os.path.join('results', path)
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Create a wrapper function for LIME
+    def predictor(texts):
+        """
+        Wrapper function for the classifier to work with LIME.
+        Returns probabilities for both classes.
+        """
+        probs = []
+        for t in texts:
+            p = sentiment_classifier.classify_sentiment(t)
+            # LIME expects probabilities for both classes
+            probs.append(np.array([1-p, p]))
+        return np.array(probs)
+
+    # Initialize LIME explainer
+    explainer = LimeTextExplainer(class_names=['negative', 'positive'])
+
+    # Generate explanation
+    print("\nGenerating LIME explanation...")
+    exp = explainer.explain_instance(
+        text, 
+        predictor,
+        num_features=30,  # Number of features to show
+        num_samples=1000  # Number of samples for perturbation
+    )
+
+    # Get the original prediction
+    original_prob = sentiment_classifier.classify_sentiment(text)
+    original_class = 'positive' if original_prob > 0.5 else 'negative'
+    
+    # Save explanation visualization
+    print("\nGenerating visualizations...")
+    
+    # 1. Save HTML visualization
+    html_path = os.path.join(results_dir, 'lime_explanation.html')
+    exp.save_to_file(html_path)
+    
+    # 2. Create and save feature importance plot
+    plt.figure(figsize=(10, 6))
+    exp.as_pyplot_figure()
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, 'lime_feature_importance.png'))
+    plt.close()
+
+    # 3. Generate highlighted text HTML
+    features_with_weights = exp.as_list()
+    
+    # Create a mapping of words to their weights
+    word_weights = {feature[0]: feature[1] for feature in features_with_weights}
+    
+    # Normalize weights for coloring
+    weights = np.array(list(word_weights.values()))
+    max_abs_weight = max(abs(weights.min()), abs(weights.max()))
+    
+    def get_color(weight):
+        """Convert weight to RGB color."""
+        if weight > 0:
+            # Green for positive
+            intensity = min(weight / max_abs_weight, 1)
+            return f'rgba(0, 255, 0, {intensity})'
+        else:
+            # Red for negative
+            intensity = min(abs(weight) / max_abs_weight, 1)
+            return f'rgba(255, 0, 0, {intensity})'
+
+    # Generate HTML with highlighted text
+    html_content = f"""
+    <html>
+    <head>
+        <title>LIME Explanation - Highlighted Text</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                padding: 20px;
+            }}
+            .explanation-header {{
+                margin-bottom: 20px;
+            }}
+            .highlighted-text {{
+                white-space: pre-wrap;
+                margin-bottom: 20px;
+            }}
+            .legend {{
+                margin-top: 20px;
+            }}
+            .word-impact {{
+                padding: 2px 4px;
+                border-radius: 3px;
+                margin: 0 2px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="explanation-header">
+            <h2>LIME Explanation</h2>
+            <p>Original prediction: {original_class} (probability: {original_prob:.3f})</p>
+        </div>
+        <div class="highlighted-text">
+    """
+    
+    # Split text into words and highlight based on LIME weights
+    words = text.split()
+    for word in words:
+        clean_word = word.lower().strip('.,!?()[]{}":;')
+        if clean_word in word_weights:
+            weight = word_weights[clean_word]
+            color = get_color(weight)
+            html_content += f'<span class="word-impact" style="background-color: {color}" title="Impact: {weight:.3f}">{html.escape(word)}</span> '
+        else:
+            html_content += html.escape(word) + ' '
+
+    html_content += """
+        </div>
+        <div class="legend">
+            <h3>Legend</h3>
+            <p><span class="word-impact" style="background-color: rgba(255,0,0,0.5)">Red</span>: Negative contribution</p>
+            <p><span class="word-impact" style="background-color: rgba(0,255,0,0.5)">Green</span>: Positive contribution</p>
+            <p>Stronger color intensity indicates stronger contribution</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    # Save highlighted text HTML
+    highlighted_path = os.path.join(results_dir, 'lime_highlighted_text.html')
+    with open(highlighted_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    results_df = pd.DataFrame(features_with_weights, columns=['Feature', 'Weight'])
+    results_df.to_csv(os.path.join(results_dir, 'lime_feature_weights.csv'), index=False)
+
+    print(f"\nResults saved in directory: {results_dir}")
+    print("- LIME explanation visualization: lime_explanation.html")
+    print("- Feature importance plot: lime_feature_importance.png")
+    print("- Highlighted text: lime_highlighted_text.html")
+    print("- Feature weights: lime_feature_weights.csv")
+
 # -----------------------------
 # Section 8: Main Execution Flow
 # -----------------------------
@@ -636,7 +788,7 @@ def main():
     print(f"Error Rate on Classification: {errors / 1000}")
  
     for i in range(0,5):
-        interpreability_analysis(test_data['review'][i], sentiment_classifier, str(i))
+        interpretability_analysis_v2(test_data['review'][i], sentiment_classifier, str(i))
 
 if __name__ == "__main__":
     main()
