@@ -88,22 +88,22 @@ class MovieRecommender:
         popularity_scores.sort(key=lambda x: x[1], reverse=True)
         self.popularity_ranks = popularity_scores
         return popularity_scores
-    def compute_transformed_cosine_similarity(self, R):
-        R = np.asarray(R)
+    def compute_transformed_cosine_similarity(self, Rdf):
+        R = np.asarray(Rdf)
         num_users, num_movies = R.shape
 
         # Boolean mask of rated entries
         rated_mask = np.isnan(R) == False        # Initialize similarity matrix with NaNs
-        similarities = pd.DataFrame(np.full((num_movies, num_movies), np.nan, dtype=np.float64), index=R.index, columns=R.columns)
+        similarities = pd.DataFrame(np.full((num_movies, num_movies), np.nan, dtype=np.float64), index=Rdf.columns, columns=Rdf.columns)
         print(similarities.shape)
 
         # Compute similarities
-        for i in range(min(num_movies, 5)):
+        for i in range(num_movies):
             # For numerical stability and symmetry, we can set diagonal elements to 1.0 after the loop.
             # But since the problem doesn't specify it, we can leave them as np.nan or set them to 1.0.
             if i % 50 == 0:
                 print(f"Processing movie {i} of {num_movies}")
-            for j in range(i+1, min(num_movies, 5)):
+            for j in range(i+1, num_movies):
                 # Find the users who rated both
                 common = rated_mask[:, i] & rated_mask[:, j]
                 n_common = np.sum(common)
@@ -120,8 +120,8 @@ class MovieRecommender:
                         cos_sim = numerator / denom
                         # Transform similarity to be in [0, 1]
                         sim = 0.5 + 0.5 * cos_sim
-                        similarities[i, j] = sim
-                        similarities[j, i] = sim  # symmetry
+                        similarities.iloc[i, j] = sim
+                        similarities.iloc[j, i] = sim  # symmetry
 
         return similarities
 
@@ -142,19 +142,7 @@ class MovieRecommender:
         # Compute similarities using sklearn on the transposed matrix for movie-movie similarities
         self.logger.info("Computing cosine similarities...")
         print(centered_matrix.shape)
-        similarities = self.compute_transformed_cosine_similarity(centered_matrix)
-        print(similarities)
-        
-        # Convert to DataFrame with proper indices
-        self.logger.info("Converting similarities to DataFrame...")
-        similarity_matrix = pd.DataFrame(
-            similarities,
-            index=self.movie_ids,
-            columns=self.movie_ids
-        )
-        
-        # Transform similarities to [0,1] range
-        similarity_matrix = (similarity_matrix + 1) / 2
+        similarity_matrix = self.compute_transformed_cosine_similarity(centered_matrix)
         print(similarity_matrix)
         
         # Keep only top 30 similarities per movie
