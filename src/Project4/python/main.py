@@ -225,14 +225,15 @@ def main():
 
 def test_recommendations():
     """Test the IBCF recommendations for two users."""
+    
     recommender = MovieRecommender()
     recommender.load_data('rating_matrix.csv', 'movies.dat')
+    user_ratings = recommender.ratings_matrix.T.loc['u1181']
     recommender.compute_similarity_matrix()
     
     # Test for existing user u1181
     print("\nRecommendations for user u1181:")
     print("-" * 70)
-    user_ratings = recommender.ratings_matrix.loc['u1181']
     recommendations = recommender.myIBCF(user_ratings)
     for movie_id in recommendations:
         title = recommender.movie_data.get(movie_id, {}).get('title', 'Unknown')
@@ -251,5 +252,5 @@ def test_recommendations():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     test_recommendations()
