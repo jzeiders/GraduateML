@@ -521,6 +521,7 @@ def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifie
     # Save the combined visualization
     output_path = os.path.join(results_dir, 'combined_analysis.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.write_html(os.path.join(results_dir, 'combined_analysis.html'))
     plt.close()
     
     print(f"Combined analysis saved to: {output_path}")
