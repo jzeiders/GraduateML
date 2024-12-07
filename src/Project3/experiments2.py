@@ -342,6 +342,7 @@ class SentimentClassifier:
         Returns:
         - Probability of positive sentiment
         """
+        
         bert_emb = self.embedder.get_embedding(text)
         openai_emb = self.transform_bert_to_openai(bert_emb)
         num_features = openai_emb.shape[1]
@@ -353,371 +354,129 @@ class SentimentClassifier:
         sentiment_prob = self.classifier.predict_proba(embedding_df)[0][1]
         return sentiment_prob
 
-
-# -----------------------------
-import nltk
-from nltk.tokenize import sent_tokenize
-nltk.download('punkt')
-nltk.download('punkt_tab')
-
-
-def interpreability_analysis(text, sentiment_classifier: SentimentClassifier, path):
+def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifier):
     """
-    Performs composite interpretability analysis by assessing the importance of each word in the text
-    based on its impact at sentence, trigram, and word levels.
-
-    Parameters:
-    - text: The original text (review) as a string.
-    - sentiment_classifier: An instance of SentimentClassifier to compute sentiments.
-    - max_sentence_length: Maximum number of characters to display for each sentence in logs.
-
-    Outputs:
-    - Saves a CSV table and an HTML file with highlighted text in the 'results' directory.
-    """
-    # Ensure results directory exists
-    results_dir = os.path.join('results',path)
-    os.makedirs(results_dir, exist_ok=True)
-    
-    # Initialize data structures
-    word_impacts = defaultdict(list)  # To accumulate impacts per word
-
-    # Step 1: Compute original sentiment
-    original_sentiment = sentiment_classifier.classify_sentiment(text)
-    print(f"Original Sentiment: {original_sentiment}")
-
-    # Step 2: Tokenize text into sentences
-    sentences = sent_tokenize(text)
-    unique_sentences = list(set(sentences))  # Ensure uniqueness
-    print(f"Total Sentences: {len(unique_sentences)}")
-
-    # Step 3: Sentence-Level Analysis
-    print("\nStarting Sentence-Level Analysis...")
-    for sentence in unique_sentences:
-        # Remove the sentence from the text
-        modified_text = text.replace(sentence, '')
-        modified_text = ' '.join(modified_text.split())  # Clean up any extra spaces
-
-        # Compute sentiment of modified text
-        modified_sentiment = sentiment_classifier.classify_sentiment(modified_text)
-
-        # Calculate impact as the difference
-        impact = original_sentiment - modified_sentiment
-
-        # Tokenize the sentence into words
-        words_in_sentence = word_tokenize(sentence)
-        words_in_sentence = [word.lower() for word in words_in_sentence if word.isalpha()]
-
-        if not words_in_sentence:
-            continue  # Skip if no valid words
-
-        # Distribute impact equally among words in the sentence
-        impact_per_word = impact / len(words_in_sentence)
-        for word in words_in_sentence:
-            word_impacts[word].append(impact_per_word)
-        
-    # Step 4: Trigram-Level Analysis
-    print("\nStarting Trigram-Level Analysis...")
-    # Generate trigrams
-    tokens = word_tokenize(text)
-    tokens = [word.lower() for word in tokens if word.isalpha()]
-    trigrams = [' '.join(trigram) for trigram in zip(tokens, tokens[1:], tokens[2:])]
-    unique_trigrams = list(set(trigrams))
-    print(f"Total Unique Trigrams: {len(unique_trigrams)}")
-
-    for trigram in unique_trigrams:
-        # Remove the trigram from the text
-        pattern = re.escape(trigram)
-        modified_text = re.sub(r'\b' + pattern + r'\b', '', text, flags=re.IGNORECASE)
-        modified_text = ' '.join(modified_text.split())  # Clean up any extra spaces
-
-        # Compute sentiment of modified text
-        modified_sentiment = sentiment_classifier.classify_sentiment(modified_text)
-
-        # Calculate impact as the difference
-        impact = original_sentiment - modified_sentiment
-
-        # Split trigram into words
-        words_in_trigram = trigram.split()
-        
-        # Distribute impact equally among words in the trigram
-        impact_per_word = impact / len(words_in_trigram)
-        for word in words_in_trigram:
-            word_impacts[word].append(impact_per_word)
-        
-    # Step 5: Word-Level Analysis
-    print("\nStarting Word-Level Analysis...")
-    unique_words = list(set(tokens))
-    print(f"Total Unique Words: {len(unique_words)}")
-
-    for word in unique_words:
-        # Remove the word from the text (all occurrences)
-        modified_text = re.sub(r'\b' + re.escape(word) + r'\b', '', text, flags=re.IGNORECASE)
-        modified_text = ' '.join(modified_text.split())  # Clean up any extra spaces
-
-        # Compute sentiment of modified text
-        modified_sentiment = sentiment_classifier.classify_sentiment(modified_text)
-
-        # Calculate impact as the difference
-        impact = original_sentiment - modified_sentiment
-
-        # Assign impact directly to the word
-        word_impacts[word].append(impact)
-
-    # Step 6: Aggregate Impacts
-    print("\nAggregating Impacts...")
-    aggregated_impacts = {}
-    for word, impacts in word_impacts.items():
-        average_impact = sum(impacts) / len(impacts)
-        aggregated_impacts[word] = average_impact
-
-    # Step 7: Create a DataFrame for results
-    results_df = pd.DataFrame({
-        'Word': list(aggregated_impacts.keys()),
-        'Average_Impact': list(aggregated_impacts.values())
-    })
-
-    # Step 8: Save the table as CSV
-    csv_path = os.path.join(results_dir, 'word_importance_composite.csv')
-    results_df.to_csv(csv_path, index=False)
-    print(f"\nResults table saved to '{csv_path}'.")
-
-    # Step 9: Visualization - Highlighted Text
-    print("\nGenerating Highlighted Text Visualization...")
-    # Normalize impact scores for coloring
-    impacts = results_df['Average_Impact']
-    norm = Normalize(vmin=impacts.min(), vmax=impacts.max())
-    cmap = plt.get_cmap('RdYlGn')  # Red for negative, Green for positive
-
-    # Create a mapping from word to color
-    word_color_map = {row['Word']: cm.colors.to_hex(cmap(norm(row['Average_Impact']))) for idx, row in results_df.iterrows()}
-
-    # Function to color words
-    def color_word(word):
-        clean_word = re.sub(r'\W+', '', word.lower())
-        color = word_color_map.get(clean_word, '#FFFFFF')  # Default to white if word not found
-        return f'<span style="background-color: {color}">{html.escape(word)}</span>'
-
-    # Split the original text into words while keeping punctuation
-    def split_text_preserve_punctuation(text):
-        return re.findall(r'\w+|[^\w\s]', text, re.UNICODE)
-
-    tokens_with_punctuation = split_text_preserve_punctuation(text)
-    highlighted_text = ' '.join([color_word(word) if word.isalpha() else html.escape(word) for word in tokens_with_punctuation])
-
-    # Generate HTML content
-    html_content = f"""
-    <html>
-    <head>
-        <title>Interpretability Analysis - Highlighted Text</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                padding: 20px;
-            }}
-            .highlighted-text {{
-                white-space: pre-wrap;
-            }}
-            span {{
-                padding: 2px 4px;
-                border-radius: 3px;
-            }}
-        </style>
-    </head>
-    <body>
-        <h2>Interpretability Analysis - Highlighted Text</h2>
-        <div class="highlighted-text">
-            {highlighted_text}
-        </div>
-        <h3>Legend</h3>
-        <p><span style="background-color: #d73027;">&nbsp;&nbsp;&nbsp;</span> Negative Impact</p>
-        <p><span style="background-color: #ffffbf;">&nbsp;&nbsp;&nbsp;</span> Neutral Impact</p>
-        <p><span style="background-color: #1a9850;">&nbsp;&nbsp;&nbsp;</span> Positive Impact</p>
-    </body>
-    </html>
-    """
-
-    # Save HTML file
-    html_path = os.path.join(results_dir, 'highlighted_text.html')
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    print(f"Highlighted text visualization saved to '{html_path}'.")
-
-    # Optional: Generate a color-coded bar chart of word impacts
-    print("\nGenerating Color-Coded Bar Chart...")
-    fig, ax = plt.subplots(figsize=(12, max(6, len(results_df) * 0.3)))  # Adjust height based on number of words
-    results_df_sorted = results_df.sort_values(by='Average_Impact', ascending=True)
-    bars = ax.barh(results_df_sorted['Word'], results_df_sorted['Average_Impact'], color='grey', edgecolor='black')
-
-    # Apply color based on impact
-    for bar, imp in zip(bars, results_df_sorted['Average_Impact']):
-        bar.set_color(cmap(norm(imp)))
-
-    ax.set_xlabel('Average Impact (Original - Modified Sentiment)')
-    ax.set_title('Word Importance Based on Composite Sentiment Impact')
-    fig.tight_layout()
-
-    # Create a colorbar
-    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.set_label('Average Impact')
-
-    # Save the image
-    image_path = os.path.join(results_dir, 'word_importance_composite.png')
-    plt.savefig(image_path)
-    plt.close()
-    print(f"Color-coded bar chart saved to '{image_path}'.")
-
-def interpretability_analysis_v2(text, sentiment_classifier: SentimentClassifier, path):
-    """
-    Performs interpretability analysis using LIME to explain the model's predictions.
+    Analyzes 5 positive and 5 negative reviews and combines their visualizations.
+    Stops processing once enough reviews of each type are found.
     
     Parameters:
-    - text: The original text (review) as a string
+    - test_data: DataFrame containing reviews
     - sentiment_classifier: An instance of SentimentClassifier
-    - path: Path for saving results
     """
-    # Ensure results directory exists
-    results_dir = os.path.join('results', path)
+    # Create results directory
+    results_dir = os.path.join('results', 'combined_analysis')
     os.makedirs(results_dir, exist_ok=True)
-
-    # Create a wrapper function for LIME
-    def predictor(texts):
-        """
-        Wrapper function for the classifier to work with LIME.
-        Returns probabilities for both classes.
-        """
-        probs = []
-        for t in texts:
-            p = sentiment_classifier.classify_sentiment(t)
-            # LIME expects probabilities for both classes
-            probs.append(np.array([1-p, p]))
-        return np.array(probs)
-
-    # Initialize LIME explainer
-    explainer = LimeTextExplainer(class_names=['negative', 'positive'])
-
-    # Generate explanation
-    print("\nGenerating LIME explanation...")
-    exp = explainer.explain_instance(
-        text, 
-        predictor,
-        num_features=30,  # Number of features to show
-        num_samples=1000  # Number of samples for perturbation
-    )
-
-    # Get the original prediction
-    original_prob = sentiment_classifier.classify_sentiment(text)
-    original_class = 'positive' if original_prob > 0.5 else 'negative'
     
-    # Save explanation visualization
-    print("\nGenerating visualizations...")
+    # Lists to store positive and negative review indices
+    positive_indices = []
+    negative_indices = []
     
-    # 1. Save HTML visualization
-    html_path = os.path.join(results_dir, 'lime_explanation.html')
-    exp.save_to_file(html_path)
+    # Process reviews until we have enough of each
+    print("Finding reviews...")
+    for idx, review in enumerate(test_data['review']):
+        if len(positive_indices) >= 5 and len(negative_indices) >= 5:
+            break
+            
+        sentiment = sentiment_classifier.classify_sentiment(review)
+        
+        if len(positive_indices) < 5 and sentiment > 0.8:
+            positive_indices.append(idx)
+            print(f"Found positive review {len(positive_indices)}/5")
+        elif len(negative_indices) < 5 and sentiment < 0.2:
+            negative_indices.append(idx)
+            print(f"Found negative review {len(negative_indices)}/5")
     
-    # 2. Create and save feature importance plot
-    plt.figure(figsize=(10, 6))
-    exp.as_pyplot_figure()
+    if len(positive_indices) < 5 or len(negative_indices) < 5:
+        print("Warning: Could not find enough reviews of each type.")
+        print(f"Found {len(positive_indices)} positive and {len(negative_indices)} negative reviews.")
+    
+    # Create a figure with subplots for all reviews
+    fig = plt.figure(figsize=(20, 25))
+    
+    # Process each review
+    for idx, review_idx in enumerate(negative_indices + positive_indices):
+        review = test_data['review'][review_idx]
+        sentiment = sentiment_classifier.classify_sentiment(review)
+        
+        # Create LIME explanation
+        def predictor(texts):
+            probs = []
+            for t in texts:
+                p = sentiment_classifier.classify_sentiment(t)
+                probs.append(np.array([1-p, p]))
+            return np.array(probs)
+        
+        explainer = LimeTextExplainer(class_names=['negative', 'positive'])
+        print(f"Generating LIME explanation for review {idx + 1}")
+        exp = explainer.explain_instance(
+            review, 
+            predictor,
+            num_features=30,
+            num_samples=10
+        )
+        
+        # Get feature weights
+        features_with_weights = exp.as_list()
+        word_weights = {feature[0]: feature[1] for feature in features_with_weights}
+        
+        # Create subplot
+        ax = fig.add_subplot(5, 2, idx + 1)
+        
+        # Split review into words and create colored text
+        words = review.split()
+        y_position = 1.0
+        x_position = 0.0
+        line_height = 0.05
+        current_line = []
+        current_line_width = 0
+        max_line_width = 0.9  # Maximum width of a line
+        
+        # Normalize weights for coloring
+        weights = np.array(list(word_weights.values()))
+        max_abs_weight = max(abs(weights.min()), abs(weights.max())) if len(weights) > 0 else 1
+        
+        for word in words:
+            clean_word = word.lower().strip('.,!?()[]{}":;')
+            weight = word_weights.get(clean_word, 0)
+            
+            # Calculate word width (approximate)
+            word_width = len(word) * 0.01
+            
+            # Check if we need to start a new line
+            if current_line_width + word_width > max_line_width:
+                y_position -= line_height
+                x_position = 0.0
+                current_line_width = 0
+                current_line = []
+            
+            # Add word to visualization
+            if clean_word in word_weights:
+                color = 'green' if weight > 0 else 'red'
+                alpha = min(abs(weight) / max_abs_weight, 1)
+            else:
+                color = 'gray'
+                alpha = 0.2
+            
+            ax.text(x_position, y_position, word + ' ', 
+                   color=color, alpha=alpha, transform=ax.transAxes)
+            
+            x_position += word_width
+            current_line_width += word_width
+            current_line.append(word)
+        
+        # Set title and remove axes
+        sentiment_label = "Positive" if sentiment > 0.5 else "Negative"
+        ax.set_title(f"Review {idx + 1} ({sentiment_label}, prob: {sentiment:.3f})")
+        ax.axis('off')
+    
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, 'lime_feature_importance.png'))
+    
+    # Save the combined visualization
+    output_path = os.path.join(results_dir, 'combined_analysis.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-
-    # 3. Generate highlighted text HTML
-    features_with_weights = exp.as_list()
     
-    # Create a mapping of words to their weights
-    word_weights = {feature[0]: feature[1] for feature in features_with_weights}
-    
-    # Normalize weights for coloring
-    weights = np.array(list(word_weights.values()))
-    max_abs_weight = max(abs(weights.min()), abs(weights.max()))
-    
-    def get_color(weight):
-        """Convert weight to RGB color."""
-        if weight > 0:
-            # Green for positive
-            intensity = min(weight / max_abs_weight, 1)
-            return f'rgba(0, 255, 0, {intensity})'
-        else:
-            # Red for negative
-            intensity = min(abs(weight) / max_abs_weight, 1)
-            return f'rgba(255, 0, 0, {intensity})'
-
-    # Generate HTML with highlighted text
-    html_content = f"""
-    <html>
-    <head>
-        <title>LIME Explanation - Highlighted Text</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                padding: 20px;
-            }}
-            .explanation-header {{
-                margin-bottom: 20px;
-            }}
-            .highlighted-text {{
-                white-space: pre-wrap;
-                margin-bottom: 20px;
-            }}
-            .legend {{
-                margin-top: 20px;
-            }}
-            .word-impact {{
-                padding: 2px 4px;
-                border-radius: 3px;
-                margin: 0 2px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="explanation-header">
-            <h2>LIME Explanation</h2>
-            <p>Original prediction: {original_class} (probability: {original_prob:.3f})</p>
-        </div>
-        <div class="highlighted-text">
-    """
-    
-    # Split text into words and highlight based on LIME weights
-    words = text.split()
-    for word in words:
-        clean_word = word.lower().strip('.,!?()[]{}":;')
-        if clean_word in word_weights:
-            weight = word_weights[clean_word]
-            color = get_color(weight)
-            html_content += f'<span class="word-impact" style="background-color: {color}" title="Impact: {weight:.3f}">{html.escape(word)}</span> '
-        else:
-            html_content += html.escape(word) + ' '
-
-    html_content += """
-        </div>
-        <div class="legend">
-            <h3>Legend</h3>
-            <p><span class="word-impact" style="background-color: rgba(255,0,0,0.5)">Red</span>: Negative contribution</p>
-            <p><span class="word-impact" style="background-color: rgba(0,255,0,0.5)">Green</span>: Positive contribution</p>
-            <p>Stronger color intensity indicates stronger contribution</p>
-        </div>
-    </body>
-    </html>
-    """
-
-    # Save highlighted text HTML
-    highlighted_path = os.path.join(results_dir, 'lime_highlighted_text.html')
-    with open(highlighted_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-
-    results_df = pd.DataFrame(features_with_weights, columns=['Feature', 'Weight'])
-    results_df.to_csv(os.path.join(results_dir, 'lime_feature_weights.csv'), index=False)
-
-    print(f"\nResults saved in directory: {results_dir}")
-    print("- LIME explanation visualization: lime_explanation.html")
-    print("- Feature importance plot: lime_feature_importance.png")
-    print("- Highlighted text: lime_highlighted_text.html")
-    print("- Feature weights: lime_feature_weights.csv")
+    print(f"Combined analysis saved to: {output_path}")
 
 # -----------------------------
 # Section 8: Main Execution Flow
@@ -735,7 +494,7 @@ def main():
     test_data = pl.read_csv(test_path)
     
     
-    df = train_data[:10000]
+    df = train_data[:1000]
 
     # Step 2: Initialize BERT Embedder
     bert_embedder = BERTEmbedder()
@@ -786,9 +545,9 @@ def main():
             errors +=1
             
     print(f"Error Rate on Classification: {errors / 1000}")
- 
-    for i in range(0,5):
-        interpretability_analysis_v2(test_data['review'][i], sentiment_classifier, str(i))
+    
+    # Run combined analysis
+    analyze_multiple_reviews(test_data, sentiment_classifier)
 
 if __name__ == "__main__":
     main()
