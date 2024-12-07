@@ -38,7 +38,7 @@ from lime.lime_text import LimeTextExplainer
 BERT_DIM = 768          # Dimension of BERT [CLS] embeddings
 OPENAI_DIM = 1536       # Dimension of OpenAI embeddings
 TRANSFORMATION_MATRIX_FILE = 'bert_to_openai_W.pkl'
-BINARY_CLASSIFIER_FILE = '/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project3/data/models/xgb_model_splitsplit_1.joblib'  # Replace with your actual file
+BINARY_CLASSIFIER_FILE = 'https://raw.githubusercontent.com/jzeiders/GraduateML/main/src/Project3/submission/xgb_model_splitsplit_1.joblib'
 DATA_FILE = 'paired_embeddings.csv'  # Replace with your actual data file
 torch.manual_seed(42)  # For reproducibility
 
@@ -298,8 +298,55 @@ def load_binary_classifier(file_path: str) -> LogisticRegression:
     Returns:
     - Loaded binary classification model
     """
-    joblib_model = joblib.load(file_path)
-    return joblib_model
+import requests
+import joblib
+import tempfile
+from typing import Union
+from sklearn.linear_model import LogisticRegression
+from urllib.parse import urlparse
+
+def load_binary_classifier(file_path: Union[str, bytes]) -> LogisticRegression:
+    """
+    Loads the pre-trained binary classification model from either a local path or remote URL.
+
+    Parameters:
+    - file_path: Path to the binary classifier file. Can be either:
+                - Local file path (str)
+                - Remote URL (str)
+                - Bytes object containing the model data
+
+    Returns:
+    - Loaded binary classification model
+
+    Raises:
+    - ValueError: If the URL is invalid or file cannot be downloaded
+    - Exception: If model loading fails
+    """
+    # Check if input is already bytes
+    if isinstance(file_path, bytes):
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            tmp_file.write(file_path)
+            tmp_file.flush()
+            return joblib.load(tmp_file.name)
+    
+    # Check if the path is a URL
+    parsed = urlparse(file_path)
+    if parsed.scheme in ('http', 'https'):
+        try:
+            # Download the file
+            response = requests.get(file_path)
+            response.raise_for_status()
+            
+            # Save to temporary file and load
+            with tempfile.NamedTemporaryFile() as tmp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    tmp_file.write(chunk)
+                tmp_file.flush()
+                return joblib.load(tmp_file.name)
+        except Exception as e:
+            raise ValueError(f"Failed to download or load binary classifier from URL: {e}")
+    else:
+        return joblib.load(file_path)
 
 # -----------------------------
 # Section 7: Classifying New Text Inputs
