@@ -223,5 +223,33 @@ def main():
     recommender.compute_similarity_matrix()
     recommender.generate_recommendations()
 
+def test_recommendations():
+    """Test the IBCF recommendations for two users."""
+    recommender = MovieRecommender()
+    recommender.load_data('rating_matrix.csv', 'movies.dat')
+    recommender.compute_similarity_matrix()
+    
+    # Test for existing user u1181
+    print("\nRecommendations for user u1181:")
+    print("-" * 70)
+    user_ratings = recommender.ratings_matrix.loc['u1181']
+    recommendations = recommender.myIBCF(user_ratings)
+    for movie_id in recommendations:
+        title = recommender.movie_data.get(movie_id, {}).get('title', 'Unknown')
+        print(f"{movie_id}: {title}")
+    
+    # Test for hypothetical user
+    print("\nRecommendations for hypothetical user (m1613:5, m1755:4):")
+    print("-" * 70)
+    hypo_user = pd.Series(np.nan, index=recommender.movie_ids)
+    hypo_user['m1613'] = 5
+    hypo_user['m1755'] = 4
+    recommendations = recommender.myIBCF(hypo_user)
+    for movie_id in recommendations:
+        title = recommender.movie_data.get(movie_id, {}).get('title', 'Unknown')
+        print(f"{movie_id}: {title}")
+
+
 if __name__ == "__main__":
     main()
+    test_recommendations()
