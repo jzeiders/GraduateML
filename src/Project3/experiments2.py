@@ -1,46 +1,35 @@
-import hashlib
-import json
 import os
+import json
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 import numpy as np
 import pandas as pd
+import polars as pl
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import joblib  # For saving/loading models
+import joblib
 from transformers import BertTokenizer, BertModel
 import torch
-import polars as pl
-import os
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
-import matplotlib.cm as cm
-import os
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
-import matplotlib.cm as cm
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from collections import defaultdict
-import re
-import html
+import requests
+import tempfile
 from lime.lime_text import LimeTextExplainer
+import hashlib
+from tqdm import tqdm
 
 
 # -----------------------------
 # Section 1: Setting Up
 # -----------------------------
 
-# Define constants
-BERT_DIM = 768          # Dimension of BERT [CLS] embeddings
-OPENAI_DIM = 1536       # Dimension of OpenAI embeddings
+# Constants
+BERT_DIM = 768
+OPENAI_DIM = 1536
 TRANSFORMATION_MATRIX_FILE = 'bert_to_openai_W.pkl'
 BINARY_CLASSIFIER_FILE = 'https://raw.githubusercontent.com/jzeiders/GraduateML/main/src/Project3/submission/xgb_model_splitsplit_1.joblib'
-DATA_FILE = 'paired_embeddings.csv'  # Replace with your actual data file
-torch.manual_seed(42)  # For reproducibility
+
+torch.manual_seed(42)
 
 # -----------------------------
 # Section 2: Loading and Preparing Data
@@ -197,24 +186,15 @@ class BERTEmbedder:
 def compute_bert_embeddings(df: pl.DataFrame, embedder: BERTEmbedder, batch_size=32):
     """
     Computes BERT embeddings for all texts in the DataFrame.
-
-    Parameters:
-    - df: DataFrame containing 'text' column.
-    - embedder: Instance of BERTEmbedder.
-    - batch_size: Number of samples to process at once.
-
-    Returns:
-    - Numpy array of shape (n_samples, 768)
     """
     bert_embeddings = []
-    for idx, text in enumerate(df['review']):
+    for text in tqdm(df['review'], total=len(df), desc="Computing BERT embeddings"):
         embedding = embedder.get_embedding(text)
         bert_embeddings.append(embedding)
-        if (idx + 1) % 1000 == 0:
-            print(f"Computed BERT embeddings for {idx + 1} samples.")
-    out = np.vstack(bert_embeddings)
-    assert out.shape == (len(df), BERT_DIM), f"Expected shape: {(len(df), BERT_DIM)}, Got: {out.shape}"
-    return out
+            
+    embeddings = np.vstack(bert_embeddings)
+    assert embeddings.shape == (len(df), BERT_DIM)
+    return embeddings
 
 # -----------------------------
 # Section 4: Fitting the Linear Regression Model
@@ -353,74 +333,38 @@ def load_binary_classifier(file_path: Union[str, bytes]) -> LogisticRegression:
 # -----------------------------
 
 class SentimentClassifier:
-    def __init__(self, bert_embedder, W, binary_classifier, convert_model: LinearRegression):
-        """
-        Initializes the SentimentClassifier.
-
-        Parameters:
-        - bert_embedder: Instance of BERTEmbedder
-        - W: Transformation matrix (768, 1536)
-        - binary_classifier: Pre-trained binary classification model
-        """
+    def __init__(self, bert_embedder, binary_classifier, convert_model: LinearRegression):
         self.embedder = bert_embedder
-        self.W = W
         self.convert_model = convert_model
         self.classifier = binary_classifier
 
-    def transform_bert_to_openai(self, bert_emb):
-        """
-        Transforms a BERT embedding to the OpenAI embedding space.
-
-        Parameters:
-        - bert_emb: Numpy array of shape (768,)
-
-        Returns:
-        - Numpy array of shape (1536,)
-        """
-        return self.convert_model.predict(bert_emb.reshape(1, -1))
-
-    def classify_sentiment(self, text):
-        """
-        Classifies the sentiment of a given text.
-
-        Parameters:
-        - text: Input text string.
-
-        Returns:
-        - Probability of positive sentiment
-        """
-        
+    def classify_sentiment(self, text: str) -> float:
+        """Classifies the sentiment of a given text."""
         bert_emb = self.embedder.get_embedding(text)
-        openai_emb = self.transform_bert_to_openai(bert_emb)
-        num_features = openai_emb.shape[1]
-        column_names = [f"embedding_{i+1}" for i in range(num_features)]
-
-        # Convert embedding to DataFrame with column names
-        embedding_df = pd.DataFrame(openai_emb, columns=column_names)
-
-        sentiment_prob = self.classifier.predict_proba(embedding_df)[0][1]
-        return sentiment_prob
+        openai_emb = self.convert_model.predict(bert_emb.reshape(1, -1))
+        
+        # Create DataFrame with numbered embedding columns
+        embedding_df = pd.DataFrame(
+            openai_emb, 
+            columns=[f"embedding_{i+1}" for i in range(openai_emb.shape[1])]
+        )
+        
+        return self.classifier.predict_proba(embedding_df)[0][1]
 
 def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifier):
     """
     Analyzes 5 positive and 5 negative reviews and combines their visualizations.
-    Stops processing once enough reviews of each type are found.
-    
-    Parameters:
-    - test_data: DataFrame containing reviews
-    - sentiment_classifier: An instance of SentimentClassifier
     """
     # Create results directory
     results_dir = os.path.join('results', 'combined_analysis')
     os.makedirs(results_dir, exist_ok=True)
     
-    # Lists to store positive and negative review indices
     positive_indices = []
     negative_indices = []
     
-    # Process reviews until we have enough of each
-    print("Finding reviews...")
-    for idx, review in enumerate(test_data['review']):
+    # Process reviews with progress bar
+    pbar = tqdm(test_data['review'], desc="Finding reviews")
+    for idx, review in enumerate(pbar):
         if len(positive_indices) >= 5 and len(negative_indices) >= 5:
             break
             
@@ -428,20 +372,20 @@ def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifie
         
         if len(positive_indices) < 5 and sentiment > 0.8:
             positive_indices.append(idx)
-            print(f"Found positive review {len(positive_indices)}/5")
+            pbar.set_postfix({'positive': len(positive_indices), 'negative': len(negative_indices)})
         elif len(negative_indices) < 5 and sentiment < 0.2:
             negative_indices.append(idx)
-            print(f"Found negative review {len(negative_indices)}/5")
+            pbar.set_postfix({'positive': len(positive_indices), 'negative': len(negative_indices)})
     
     if len(positive_indices) < 5 or len(negative_indices) < 5:
         print("Warning: Could not find enough reviews of each type.")
         print(f"Found {len(positive_indices)} positive and {len(negative_indices)} negative reviews.")
     
-    # Create a figure with subplots for all reviews
+    # Create figure with subplots for all reviews
     fig = plt.figure(figsize=(20, 25))
     
-    # Process each review
-    for idx, review_idx in enumerate(negative_indices + positive_indices):
+    # Process each review with progress bar
+    for idx, review_idx in enumerate(tqdm(negative_indices + positive_indices, desc="Generating LIME explanations")):
         review = test_data['review'][review_idx]
         sentiment = sentiment_classifier.classify_sentiment(review)
         
@@ -521,7 +465,6 @@ def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifie
     # Save the combined visualization
     output_path = os.path.join(results_dir, 'combined_analysis.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.write_html(os.path.join(results_dir, 'combined_analysis.html'))
     plt.close()
     
     print(f"Combined analysis saved to: {output_path}")
@@ -531,70 +474,37 @@ def analyze_multiple_reviews(test_data, sentiment_classifier: SentimentClassifie
 # -----------------------------
 
 def main():
-    # Step 1: Load Data
-    # Replace 'paired_embeddings.csv' with your actual data file path
+    # Load data
     data_dir = "/Users/jzeiders/Documents/Code/Learnings/GraduateML/src/Project3/data/split_1"
-    train_path = os.path.join(data_dir, 'train.csv')
-    test_path = os.path.join(data_dir, 'test.csv')
-    test_labels_path = os.path.join(data_dir, 'test_y.csv')
+    print("Loading data...")
+    train_data = pl.read_csv(os.path.join(data_dir, 'train.csv'))
+    test_data = pl.read_csv(os.path.join(data_dir, 'test.csv'))
     
-    train_data = pl.read_csv(train_path)
-    test_data = pl.read_csv(test_path)
-    
-    
-    df = train_data[:1000]
+    # Use subset for training
+    train_subset = train_data[:1000]
 
-    # Step 2: Initialize BERT Embedder
+    # Initialize BERT embedder and compute embeddings
     bert_embedder = BERTEmbedder()
+    bert_embeddings = compute_bert_embeddings(train_subset, bert_embedder)
 
-    # Step 3: Compute BERT Embeddings
-    print("Computing BERT embeddings...")
-    bert_embeddings = compute_bert_embeddings(df, bert_embedder)
-    print("BERT embeddings computed.")
+    # Prepare features
+    X = bert_embeddings
+    Y = np.vstack(train_subset.drop(['id','sentiment', 'review']).to_numpy())
 
-    # Step 4: Prepare Feature Matrices
-    X = bert_embeddings  # Shape: (n_samples, 768)
-    Y = np.vstack(df.drop(['id','sentiment', 'review']).to_numpy())  # Shape: (n_samples, 1536)
-
-    # Step 5: Split Data into Training and Testing Sets
-    X_train, X_test, Y_train, Y_test = train_test_split(
-        X, Y, test_size=0.5, random_state=42
-    )
-    print(f"Training samples: {X_train.shape[0]}, Testing samples: {X_test.shape[0]}")
-
-    # Step 6: Fit Linear Regression Model
+    # Train model
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.5, random_state=42)
+    print("Training linear regression model...")
     linear_reg_model = fit_linear_regression(X_train, Y_train)
     
-
-    # Step 7: Evaluate the Transformation
-    evaluate_transformation(linear_reg_model, X_test, Y_test)
-    
-
-
-    # Step 8: Save the Transformation Matrix
+    # Evaluate and save model
+    mse = evaluate_transformation(linear_reg_model, X_test, Y_test)
     save_transformation_matrix(linear_reg_model, TRANSFORMATION_MATRIX_FILE)
 
-    # Step 9: Load the Transformation Matrix and Binary Classifier
-    W = load_transformation_matrix(TRANSFORMATION_MATRIX_FILE)
+    # Load binary classifier and create sentiment classifier
     binary_classifier = load_binary_classifier(BINARY_CLASSIFIER_FILE)
-
-    # Step 10: Initialize Sentiment Classifier
-    sentiment_classifier = SentimentClassifier(bert_embedder, W, binary_classifier, linear_reg_model)
+    sentiment_classifier = SentimentClassifier(bert_embedder, binary_classifier, linear_reg_model)
     
-    # New Predictions | Confirm the translation matrix is decent
-    predictions = binary_classifier.predict(df[:,3:])
-    
-    errors = 0
-    for i in range(1000):
-        baseline_pred = predictions[i]
-        bert_pred = round(sentiment_classifier.classify_sentiment(df['review'][i]))
-        
-        if(baseline_pred != bert_pred):
-            errors +=1
-            
-    print(f"Error Rate on Classification: {errors / 1000}")
-    
-    # Run combined analysis
+    # Analyze reviews
     analyze_multiple_reviews(test_data, sentiment_classifier)
 
 if __name__ == "__main__":
