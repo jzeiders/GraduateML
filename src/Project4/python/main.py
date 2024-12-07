@@ -33,15 +33,15 @@ class MovieRecommender:
         start_time = time.time()
         self.logger.info("Starting data loading process...")
         
-        # Read ratings matrix
+        # Read ratings matrix - no transpose needed now
         self.logger.info(f"Loading ratings from {ratings_file}")
-        self.ratings_matrix = pd.read_csv(ratings_file, index_col=0).T
+        self.ratings_matrix = pd.read_csv(ratings_file, index_col=0)
         self.logger.info(f"Loaded ratings matrix with shape: {self.ratings_matrix.shape}")
         
-        # Convert column names
-        if not all(col.startswith('u') for col in self.ratings_matrix.columns):
-            self.logger.debug("Converting column names to user ID format")
-            self.ratings_matrix.columns = [f'u{col}' for col in self.ratings_matrix.columns]
+        # Convert row indices if needed
+        if not all(idx.startswith('u') for idx in self.ratings_matrix.index):
+            self.logger.debug("Converting row indices to user ID format")
+            self.ratings_matrix.index = [f'u{idx}' for idx in self.ratings_matrix.index]
         
         # Load movie data
         self.logger.info(f"Loading movies from {movies_file}")
@@ -63,7 +63,7 @@ class MovieRecommender:
             self.logger.error(f"Error loading movies file: {str(e)}")
             
         self.logger.info(f"Successfully loaded {movies_loaded} movies")
-        self.movie_ids = self.ratings_matrix.index.tolist()
+        self.movie_ids = self.ratings_matrix.columns.tolist()
         
         elapsed_time = time.time() - start_time
         self.logger.info(f"Data loading completed in {elapsed_time:.2f} seconds")
@@ -88,24 +88,62 @@ class MovieRecommender:
         popularity_scores.sort(key=lambda x: x[1], reverse=True)
         self.popularity_ranks = popularity_scores
         return popularity_scores
+    def compute_transformed_cosine_similarity(self, R):
+        R = np.asarray(R)
+        num_users, num_movies = R.shape
+
+        # Boolean mask of rated entries
+        rated_mask = np.isnan(R) == False        # Initialize similarity matrix with NaNs
+        similarities = pd.DataFrame(np.full((num_movies, num_movies), np.nan, dtype=np.float64), index=R.index, columns=R.columns)
+        print(similarities.shape)
+
+        # Compute similarities
+        for i in range(min(num_movies, 5)):
+            # For numerical stability and symmetry, we can set diagonal elements to 1.0 after the loop.
+            # But since the problem doesn't specify it, we can leave them as np.nan or set them to 1.0.
+            if i % 50 == 0:
+                print(f"Processing movie {i} of {num_movies}")
+            for j in range(i+1, min(num_movies, 5)):
+                # Find the users who rated both
+                common = rated_mask[:, i] & rated_mask[:, j]
+                n_common = np.sum(common)
+                
+                if n_common >= 3:
+                    # Extract the ratings from those common users
+                    Ri = R[common, i]
+                    Rj = R[common, j]
+                    
+                    numerator = np.sum(Ri * Rj)
+                    denom = np.sqrt(np.sum(Ri**2)) * np.sqrt(np.sum(Rj**2))
+                    
+                    if denom != 0:
+                        cos_sim = numerator / denom
+                        # Transform similarity to be in [0, 1]
+                        sim = 0.5 + 0.5 * cos_sim
+                        similarities[i, j] = sim
+                        similarities[j, i] = sim  # symmetry
+
+        return similarities
 
     def compute_similarity_matrix(self) -> None:
         """Compute movie similarity matrix using sklearn's cosine_similarity."""
         start_time = time.time()
         self.logger.info("Starting similarity matrix computation...")
         
-        # Center the ratings matrix
+        # Center the ratings matrix by user (row) means
         self.logger.info("Centering ratings matrix...")
-        means = self.ratings_matrix.mean(axis=1)
-        centered_matrix = self.ratings_matrix.sub(means, axis=0)
+        self.user_means = self.ratings_matrix.mean(axis=1)  # Mean rating for each user
+        centered_matrix = self.ratings_matrix.sub(self.user_means, axis=0)  # Subtract along rows
+        print(centered_matrix)
         
         # Fill NaN values with 0 for cosine similarity computation
         self.logger.info("Converting to dense matrix for similarity computation...")
-        dense_matrix = centered_matrix.fillna(0).values
         
-        # Compute similarities using sklearn
+        # Compute similarities using sklearn on the transposed matrix for movie-movie similarities
         self.logger.info("Computing cosine similarities...")
-        similarities = cosine_similarity(dense_matrix)
+        print(centered_matrix.shape)
+        similarities = self.compute_transformed_cosine_similarity(centered_matrix)
+        print(similarities)
         
         # Convert to DataFrame with proper indices
         self.logger.info("Converting similarities to DataFrame...")
@@ -117,6 +155,7 @@ class MovieRecommender:
         
         # Transform similarities to [0,1] range
         similarity_matrix = (similarity_matrix + 1) / 2
+        print(similarity_matrix)
         
         # Keep only top 30 similarities per movie
         self.logger.info("Filtering top 30 similarities per movie...")
@@ -138,8 +177,6 @@ class MovieRecommender:
         self.logger.info("Saving similarity matrix to file...")
         self.similarity_matrix.to_csv('similarity_matrix.csv')
         
-        elapsed_time = time.time() - start_time
-        self.logger.info(f"Similarity matrix computation completed in {elapsed_time:.2f} seconds")
 
     def myIBCF(self, newuser: pd.Series) -> List[str]:
         """Implement IBCF recommendation for a new user."""
@@ -149,6 +186,9 @@ class MovieRecommender:
         if self.similarity_matrix is None:
             self.logger.info("Loading similarity matrix from file...")
             self.similarity_matrix = pd.read_csv('similarity_matrix.csv', index_col=0)
+        
+        # Calculate mean rating for new user
+        user_mean = newuser[newuser.notna()].mean()
         
         self.logger.info(f"User has rated {newuser.notna().sum()} movies")
         predictions = []
@@ -161,8 +201,16 @@ class MovieRecommender:
                 if len(rated_similar) > 0:
                     weights = rated_similar.values
                     ratings = newuser[rated_similar.index].values
-                    prediction = np.sum(weights * ratings) / np.sum(weights)
-                    predictions.append((movie_i, prediction))
+                    # Center the ratings using user's mean
+                    centered_ratings = ratings - user_mean
+                    # Compute prediction with baseline adjustment
+                    weighted_sum = np.sum(weights * centered_ratings)
+                    weight_sum = np.sum(np.abs(weights))  # Use absolute weights for normalization
+                    if weight_sum > 0:  # Avoid division by zero
+                        prediction = user_mean + (weighted_sum / weight_sum)
+                        # Clip predictions to valid rating range (1-5)
+                        prediction = np.clip(prediction, 1, 5)
+                        predictions.append((movie_i, prediction))
         
         self.logger.info(f"Generated {len(predictions)} predictions")
         
@@ -217,6 +265,40 @@ class MovieRecommender:
             title = self.movie_data.get(movie_id, {}).get('title', 'Unknown')
             print(f"{movie_id:<10} {title[:60]:<60}")
 
+    def validate_recommendations(self, user_id: str, recommendations: List[str]) -> None:
+        """Validate recommendations against known correct movies."""
+        if user_id == 'u1181':
+            required_top_3 = ['m3732', 'm749', 'm3899']
+            expected_label = "Required top 3"
+            top_k = 3
+        else:  # hypothetical user
+            required_top_10 = ['m1017', 'm2805', 'm3269', 'm691', 'm74', 
+                              'm765', 'm1100', 'm1468', 'm1541', 'm158']
+            required_top_3 = required_top_10  # Use all 10 for validation
+            expected_label = "Expected top 10"
+            top_k = 10
+            
+        # Check top k
+        top_k_found = [movie for movie in required_top_3 if movie in recommendations[:top_k]]
+        print(f"\nValidation Results for {'u1181' if user_id == 'u1181' else 'hypothetical user'}:")
+        print("-" * 50)
+        print(f"{expected_label}: {', '.join(required_top_3)}")
+        print(f"Found in top {top_k}: {', '.join(top_k_found)}")
+        print(f"Top {top_k} accuracy: {len(top_k_found)}/{len(required_top_3)}")
+        
+        # Check if required movies are in rest of recommendations
+        remaining_required = [m for m in required_top_3 if m not in recommendations[:top_k]]
+        found_in_rest = [m for m in remaining_required if m in recommendations[top_k:]]
+        if remaining_required:
+            print(f"\nExpected movies found later in list: {', '.join(found_in_rest)}")
+        
+        # Print full recommendation list with positions
+        print("\nFull recommendation list with positions:")
+        for i, movie_id in enumerate(recommendations, 1):
+            title = self.movie_data.get(movie_id, {}).get('title', 'Unknown')
+            is_required = '(EXPECTED)' if movie_id in required_top_3 else ''
+            print(f"{i}. {movie_id}: {title} {is_required}")
+
 def main():
     recommender = MovieRecommender()
     recommender.load_data('rating_matrix.csv', 'movies.dat')
@@ -228,16 +310,14 @@ def test_recommendations():
     
     recommender = MovieRecommender()
     recommender.load_data('rating_matrix.csv', 'movies.dat')
-    user_ratings = recommender.ratings_matrix.T.loc['u1181']
+    user_ratings = recommender.ratings_matrix.loc['u1181']
     recommender.compute_similarity_matrix()
     
     # Test for existing user u1181
     print("\nRecommendations for user u1181:")
     print("-" * 70)
     recommendations = recommender.myIBCF(user_ratings)
-    for movie_id in recommendations:
-        title = recommender.movie_data.get(movie_id, {}).get('title', 'Unknown')
-        print(f"{movie_id}: {title}")
+    recommender.validate_recommendations('u1181', recommendations)
     
     # Test for hypothetical user
     print("\nRecommendations for hypothetical user (m1613:5, m1755:4):")
@@ -246,9 +326,7 @@ def test_recommendations():
     hypo_user['m1613'] = 5
     hypo_user['m1755'] = 4
     recommendations = recommender.myIBCF(hypo_user)
-    for movie_id in recommendations:
-        title = recommender.movie_data.get(movie_id, {}).get('title', 'Unknown')
-        print(f"{movie_id}: {title}")
+    recommender.validate_recommendations('hypothetical', recommendations)
 
 
 if __name__ == "__main__":
