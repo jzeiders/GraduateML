@@ -72,7 +72,7 @@ def main():
     
     train_path = os.path.join(data_dir, 'train.csv')
     test_path = os.path.join(data_dir, 'test.csv')
-    test_y_path = None
+    test_y_path = os.path.join(data_dir, 'test_y.csv') if os.path.exists(os.path.join(data_dir, 'test_y.csv')) else None
     
     # Load and preprocess data
     train, test, test_y = load_data(train_path, test_path, test_y_path)
