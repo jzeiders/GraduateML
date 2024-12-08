@@ -14,7 +14,7 @@ import main from "./assets/python/main.py?raw"
 import similarityMatrix from "./assets/python/similarity_matrix.csv?raw"
 import movies from "./assets/python/movies.dat?raw"
 
-const MOVIE_OPTIONS = movies.split("\n").map(line => line.split("::")).map(([id, title, genres]) => ({
+const MOVIE_OPTIONS = movies.split("\n").map(line => line.split("::")).map(([id, title]) => ({
   id: `m${id}`,
   title
 }))
