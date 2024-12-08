@@ -67,7 +67,7 @@ function App() {
               </CardHeader>
               <CardContent>
                 <div className="aspect-w-2 aspect-h-3 mb-4">
-                  PLACEHOLDER
+                  <img src={`https://liangfgithub.github.io/Proj/F24_Proj1/movies/${movie.id.slice(1)}.jpg`} alt={movie.title} className="w-full h-full object-cover" />
                 </div>
                
                 <div className="flex items-center">
@@ -99,7 +99,9 @@ function App() {
                   <CardTitle className="text-lg">{movie?.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  PLACEHOLDER
+                  <div className="aspect-w-2 aspect-h-3 mb-4">
+                    <img src={`https://liangfgithub.github.io/Proj/F24_Proj1/movies/${movie?.id.slice(1)}.jpg`} alt={movie?.title} className="w-full h-full object-cover" />
+                  </div>
                 </CardContent>
               </Card>
             ))}

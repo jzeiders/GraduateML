@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "pyodide": "^0.26.4",
-    "vite-plugin-static-copy": "^2.1.0"
-  }
-}
