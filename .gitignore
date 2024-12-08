@@ -4,3 +4,7 @@
 
 src/Project3/data
 bert_cache
+
+train.csv
+test.csv
+test_y.csv
