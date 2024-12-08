@@ -2,16 +2,24 @@ import { loadPyodide } from "pyodide"
 import './App.css'
 
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from "./components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "./components/ui/card"
 import { Input } from "./components/ui/input"
 import { Label } from "./components/ui/label"
 import main from "./assets/python/main.py?raw"
 import similarityMatrix from "./assets/python/similarity_matrix.csv?raw"
+import movies from "./assets/python/movies.dat?raw"
+
+
+const MOVIE_OPTIONS = movies.split("\n").map(line => line.split("::")).map(([id, title, genres]) => ({
+  id: `m${id}`,
+  title
+}))
 
 
 function App() {
+
   const [_count, setCount] = useState(0)
   const myIBCF = useRef<any>(null)
 
@@ -24,14 +32,18 @@ function App() {
     await pyodideInstance.runPython(main);
     myIBCF.current = await pyodideInstance.globals.get("getHypoResultTest")
     const recommendedMovies = myIBCF.current(similarityMatrix, new Map([["m1", 5], ["m2", 4], ["m3", 3]]))
-    setRecommendations(recommendedMovies)
+    setRecommendedIds(recommendedMovies)
   }
   useEffect(() => {
     setupMyIBCF()
   }, [])
 
   const [ratings, setRatings] = useState<Map<string, number>>(new Map())
-  const [recommendations, setRecommendations] = useState<string[]>([])
+  const [recommendedIds, setRecommendedIds] = useState<string[]>([])
+  
+  const recommendedMovies = useMemo(() => {
+    return recommendedIds.map(id => MOVIE_OPTIONS.find(movie => movie.id === id))
+  }, [recommendedIds])
 
   const handleRatingChange = (movie: string, rating: number) => {
     setRatings(prev => new Map(prev).set(movie, rating))
@@ -39,9 +51,9 @@ function App() {
 
   const handleSubmit = () => {
     const recommendedMovies = myIBCF.current(similarityMatrix, ratings)
-    setRecommendations(recommendedMovies)
+    setRecommendedIds(recommendedMovies)
   }
-  const sampleMovies = [];
+  const sampleMovies = MOVIE_OPTIONS.slice(0, 10);
 
   return (
     <div className="container mx-auto p-4">
@@ -50,29 +62,24 @@ function App() {
         <h2 className="text-2xl font-semibold mb-4">Rate These Movies</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sampleMovies.map(movie => (
-            <Card key={movie} className="w-full">
+            <Card key={movie.id} className="w-full">
               <CardHeader>
-                <CardTitle className="text-lg">{movie}</CardTitle>
+                <CardTitle className="text-lg">{movie.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="aspect-w-2 aspect-h-3 mb-4">
-                  <img
-                    src={`/placeholder.svg?height=450&width=300&text=${encodeURIComponent(movie)}`}
-                    alt={movie}
-                    width={300}
-                    height={450}
-                    className="rounded-md object-cover"
-                  />
+                  PLACEHOLDER
                 </div>
+               
                 <div className="flex items-center">
-                  <Label htmlFor={movie} className="mr-2">Rating:</Label>
+                  <Label htmlFor={movie.id} className="mr-2">Rating:</Label>
                   <Input
-                    id={movie}
+                    id={movie.id}
                     type="number"
                     min="1"
                     max="5"
-                    value={ratings[movie] || ''}
-                    onChange={(e) => handleRatingChange(movie, Number(e.target.value))}
+                    value={ratings.get(movie.id) || ''}
+                    onChange={(e) => handleRatingChange(movie.id, Number(e.target.value))}
                     className="w-16"
                   />
                 </div>
@@ -83,25 +90,17 @@ function App() {
         <Button onClick={handleSubmit} className="mt-6">Get Recommendations</Button>
       </div>
 
-      {recommendations.length > 0 && (
+      {recommendedIds.length > 0 && (
         <div>
           <h2 className="text-2xl font-semibold mb-4">Your Recommendations</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {recommendations.map(movie => (
-              <Card key={movie} className="w-full">
+            {recommendedMovies.map(movie => (
+              <Card key={movie?.id} className="w-full">
                 <CardHeader>
-                  <CardTitle className="text-lg">{movie}</CardTitle>
+                  <CardTitle className="text-lg">{movie?.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="aspect-w-2 aspect-h-3">
-                    <img
-                      src={`/placeholder.svg?height=450&width=300&text=${encodeURIComponent(movie)}`}
-                      alt={movie}
-                      width={300}
-                      height={450}
-                      className="rounded-md object-cover"
-                    />
-                  </div>
+                  PLACEHOLDER
                 </CardContent>
               </Card>
             ))}
