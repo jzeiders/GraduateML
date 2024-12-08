@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "deploy": "npm run build && surge ./dist john-zeiders.movie-rec.surge.sh",
     "preview": "vite preview"
   },
   "dependencies": {

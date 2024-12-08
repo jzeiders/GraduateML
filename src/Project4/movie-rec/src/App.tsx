@@ -13,7 +13,6 @@ import { Loader2 } from 'lucide-react'
 import main from "./assets/python/main.py?raw"
 import similarityMatrix from "./assets/python/similarity_matrix.csv?raw"
 import movies from "./assets/python/movies.dat?raw"
-
 const MOVIE_OPTIONS = movies.split("\n").map(line => line.split("::")).map(([id, title]) => ({
   id: `m${id}`,
   title
@@ -35,7 +34,7 @@ function App() {
       await pyodideInstance.loadPackage("pandas")
       await pyodideInstance.loadPackage("numpy")
       await pyodideInstance.runPython(main);
-      myIBCF.current = await pyodideInstance.globals.get("getHypoResultTest")
+      myIBCF.current = await pyodideInstance.globals.get("getRunIBCF")
       setIsPyodideReady(true)
       toast({
         title: "Ready to generate recommendations",
@@ -76,7 +75,7 @@ function App() {
 
     setIsGenerating(true)
     try {
-      const recommendedMovies = myIBCF.current(similarityMatrix, ratings)
+      const recommendedMovies = myIBCF.current(similarityMatrix, ratings )
       setRecommendedIds(recommendedMovies)
       toast({
         title: "Recommendations generated",
@@ -88,6 +87,7 @@ function App() {
         title: "Error generating recommendations",
         description: "There was an error generating your recommendations. Please try again.",
       })
+      console.error(error)
     } finally {
       setIsGenerating(false)
     }
