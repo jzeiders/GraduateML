@@ -27,15 +27,6 @@ function viteStaticCopyPyodide() {
       }
     },
   }
-  // const pyodideDir = dirname(fileURLToPath(import.meta.resolve("pyodide")));
-  // return viteStaticCopy({
-  //   targets: [
-  //     {
-  //       src: [join(pyodideDir, "*")].concat(PYODIDE_EXCLUDE),
-  //       dest: "assets",
-  //     },
-  //   ],
-  // });
 }
 
 // https://vite.dev/config/
