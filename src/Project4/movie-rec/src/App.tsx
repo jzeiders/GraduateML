@@ -20,7 +20,6 @@ const MOVIE_OPTIONS = movies.split("\n").map(line => line.split("::")).map(([id,
 
 function App() {
 
-  const [_count, setCount] = useState(0)
   const myIBCF = useRef<any>(null)
 
   const setupMyIBCF = async () => {
