@@ -93,7 +93,7 @@ function App() {
     }
   }
 
-  const sampleMovies = MOVIE_OPTIONS.slice(0, 10);
+  const sampleMovies = MOVIE_OPTIONS.slice(0, 100);
 
   return (
     <div className="min-h-screen">
