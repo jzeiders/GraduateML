@@ -304,7 +304,7 @@ class MovieRecommender:
             is_required = '(EXPECTED)' if movie_id in required_top_3 else ''
             print(f"{i}. {movie_id}: {title} {is_required}")
 
-def myIBCF(logger: logging.Logger, similarity_matrix: pd.DataFrame, newuser: pd.Series) -> List[str]:
+def myIBCF(logger: logging.Logger, similarity_matrix: pd.DataFrame, newuser: pd.Series, popular_movies: List[str] = []) -> List[str]:
     """Implement IBCF recommendation for a new user."""
     start_time = time.time()
     logger.info("Starting IBCF recommendation process...")
@@ -340,15 +340,20 @@ def myIBCF(logger: logging.Logger, similarity_matrix: pd.DataFrame, newuser: pd.
     
     logger.info(f"Generated {len(predictions)} predictions")
     
-    # Sort and get recommendations
     predictions.sort(key=lambda x: x[1], reverse=True)
-    recommended = [p[0] for p in predictions[:10]]
+    predictions = [p[0] for p in predictions[:10]]
+
+    if len(predictions) < 10:
+        new_predictions = [p for p in popular_movies if p not in predictions and pd.isna(newuser[p])]
+        predictions.extend(new_predictions[:10 - len(predictions)])
+    
+    # Sort and get recommendations
     
     elapsed_time = time.time() - start_time
     logger.info(f"IBCF recommendations completed in {elapsed_time:.2f} seconds")
-    return recommended[:10]
+    return predictions[:10]
 
-def getHypoResultTest(similarity_matrix_csv: str, user_ratings: Dict[str, float]):
+def getRunIBCF(similarity_matrix_csv: str, user_ratings: Dict[str, float]):
     """
     Test function that takes a similarity matrix CSV and returns recommendations
     for user u1181.
@@ -367,7 +372,10 @@ def getHypoResultTest(similarity_matrix_csv: str, user_ratings: Dict[str, float]
             test_user[movie] = rating
 
     # Get recommendations using myIBCF
-    recommendations = myIBCF(recommender.logger, recommender.similarity_matrix, test_user)
+    popular_movies = [
+        'm2858', 'm260', 'm1196', 'm1210', 'm2028', 'm1198', 'm593', 'm2571', 'm2762', 'm589'
+    ]     
+    recommendations = myIBCF(recommender.logger, recommender.similarity_matrix, test_user, popular_movies)
     
     return recommendations
 
@@ -401,7 +409,10 @@ def test_recommendations():
     recommender.validate_recommendations('hypothetical', recommendations)
 
 
+import sys
 if __name__ == "__main__":
-    # main()
-    # test_recommendations()
-    pass
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        main()
+        test_recommendations()
+    else:
+        pass
