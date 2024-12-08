@@ -2,59 +2,46 @@ import { loadPyodide } from "pyodide"
 import './App.css'
 
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from "./components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "./components/ui/card"
 import { Input } from "./components/ui/input"
 import { Label } from "./components/ui/label"
+import main from "./assets/python/main.py?raw"
+import similarityMatrix from "./assets/python/similarity_matrix.csv?raw"
+
+
 function App() {
-  const [count, setCount] = useState(0)
-  const increment = async () => {
-    const pyodideInstance = await loadPyodide();
-    const result = pyodideInstance.runPython(`${count} + 1`);
-    setCount(result);
-  }
+  const [_count, setCount] = useState(0)
+  const myIBCF = useRef<any>(null)
 
-  // Simulated myIBCF function
-  const myIBCF = (ratings: { [key: string]: number }): string[] => {
-    // This is a placeholder function that always returns the same 10 movies
-    return [
-      "The Shawshank Redemption",
-      "The Godfather",
-      "The Dark Knight",
-      "12 Angry Men",
-      "Schindler's List",
-      "The Lord of the Rings: The Return of the King",
-      "Pulp Fiction",
-      "The Good, the Bad and the Ugly",
-      "Fight Club",
-      "Forrest Gump"
-    ]
+  const setupMyIBCF = async () => {
+    const pyodideInstance = await loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
+    });
+    await pyodideInstance.loadPackage("pandas")
+    await pyodideInstance.loadPackage("numpy")
+    await pyodideInstance.runPython(main);
+    myIBCF.current = await pyodideInstance.globals.get("getHypoResultTest")
+    const recommendedMovies = myIBCF.current(similarityMatrix, new Map([["m1", 5], ["m2", 4], ["m3", 3]]))
+    setRecommendations(recommendedMovies)
   }
+  useEffect(() => {
+    setupMyIBCF()
+  }, [])
 
-  const sampleMovies = [
-    "Inception",
-    "The Matrix",
-    "Interstellar",
-    "Gladiator",
-    "The Silence of the Lambs",
-    "Saving Private Ryan",
-    "The Green Mile",
-    "Spirited Away",
-    "Parasite",
-    "Whiplash"
-  ]
-  const [ratings, setRatings] = useState<{ [key: string]: number }>({})
+  const [ratings, setRatings] = useState<Map<string, number>>(new Map())
   const [recommendations, setRecommendations] = useState<string[]>([])
 
   const handleRatingChange = (movie: string, rating: number) => {
-    setRatings(prev => ({ ...prev, [movie]: rating }))
+    setRatings(prev => new Map(prev).set(movie, rating))
   }
 
   const handleSubmit = () => {
-    const recommendedMovies = myIBCF(ratings)
+    const recommendedMovies = myIBCF.current(similarityMatrix, ratings)
     setRecommendations(recommendedMovies)
   }
+  const sampleMovies = [];
 
   return (
     <div className="container mx-auto p-4">

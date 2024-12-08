@@ -8,6 +8,7 @@ import logging
 import time
 from multiprocessing import Pool, cpu_count
 from itertools import combinations
+import io
 
 
 def compute_similarity_chunk(args):
@@ -38,7 +39,7 @@ def compute_similarity_chunk(args):
 
 
 class MovieRecommender:
-    def __init__(self):
+    def __init__(self, similarity_matrix_csv: str = None):
         # Set up logging configuration
         logging.basicConfig(
             level=logging.INFO,
@@ -56,6 +57,17 @@ class MovieRecommender:
         self.popularity_ranks = None
         self.movie_ids = None
         
+        # Load similarity matrix if provided
+        if similarity_matrix_csv:
+            self.logger.info(f"Loading similarity matrix from {similarity_matrix_csv}")
+            try:
+                self.similarity_matrix = pd.read_csv(similarity_matrix_csv, index_col=0)
+                self.movie_ids = self.similarity_matrix.columns.tolist()
+                self.logger.info("Successfully loaded similarity matrix")
+            except Exception as e:
+                self.logger.error(f"Error loading similarity matrix: {str(e)}")
+                raise
+
     def load_data(self, ratings_file: str, movies_file: str) -> None:
         """Load and process the ratings and movies data."""
         start_time = time.time()
@@ -336,6 +348,29 @@ def myIBCF(logger: logging.Logger, similarity_matrix: pd.DataFrame, newuser: pd.
     logger.info(f"IBCF recommendations completed in {elapsed_time:.2f} seconds")
     return recommended[:10]
 
+def getHypoResultTest(similarity_matrix_csv: str, user_ratings: Dict[str, float]):
+    """
+    Test function that takes a similarity matrix CSV and returns recommendations
+    for user u1181.
+    """
+    recommender = MovieRecommender()
+    
+    # Load the similarity matrix from the provided CSV
+    recommender.similarity_matrix = pd.read_csv(io.StringIO(similarity_matrix_csv), index_col=0)
+    
+    # Create a test user with some ratings
+    movie_ids = recommender.similarity_matrix.columns
+    test_user = pd.Series(np.nan, index=movie_ids)
+    
+    for movie, rating in user_ratings.items():
+        if movie in test_user.index:
+            test_user[movie] = rating
+
+    # Get recommendations using myIBCF
+    recommendations = myIBCF(recommender.logger, recommender.similarity_matrix, test_user)
+    
+    return recommendations
+
 def main():
     recommender = MovieRecommender()
     recommender.load_data('rating_matrix.csv', 'movies.dat')
@@ -368,4 +403,5 @@ def test_recommendations():
 
 if __name__ == "__main__":
     # main()
-    test_recommendations()
+    # test_recommendations()
+    pass

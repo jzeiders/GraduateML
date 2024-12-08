@@ -1,26 +1,41 @@
 import react from '@vitejs/plugin-react';
+import { copyFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import path, { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { defineConfig } from 'vite';
-import { viteStaticCopy } from "vite-plugin-static-copy";
-
-const PYODIDE_EXCLUDE = [
-  "!**/*.{md,html}",
-  "!**/*.d.ts",
-  "!**/*.whl",
-  "!**/node_modules",
-];
+;
 
 function viteStaticCopyPyodide() {
-  const pyodideDir = dirname(fileURLToPath(import.meta.resolve("pyodide")));
-  return viteStaticCopy({
-    targets: [
-      {
-        src: [join(pyodideDir, "*")].concat(PYODIDE_EXCLUDE),
-        dest: "assets",
-      },
-    ],
-  });
+  return {
+    name: "vite-plugin-pyodide",
+    generateBundle: async () => {
+      const assetsDir = "dist/assets";
+      await mkdir(assetsDir, { recursive: true });
+      const files = [
+        "pyodide-lock.json",
+        "pyodide.asm.js",
+        "pyodide.asm.wasm",
+        "python_stdlib.zip",
+      ];
+      const modulePath = fileURLToPath(import.meta.resolve("pyodide"));
+      for (const file of files) {
+        await copyFile(
+          join(dirname(modulePath), file),
+          join(assetsDir, file),
+        );
+      }
+    },
+  }
+  // const pyodideDir = dirname(fileURLToPath(import.meta.resolve("pyodide")));
+  // return viteStaticCopy({
+  //   targets: [
+  //     {
+  //       src: [join(pyodideDir, "*")].concat(PYODIDE_EXCLUDE),
+  //       dest: "assets",
+  //     },
+  //   ],
+  // });
 }
 
 // https://vite.dev/config/
